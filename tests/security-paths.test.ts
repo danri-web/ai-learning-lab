@@ -93,8 +93,10 @@ describe("解析出来的路径", () => {
     }
   });
 
-  it("拒绝非 .md 之外被塞进来的扩展名（比如 .exe）", () => {
-    expect(() => resolveArticlePath(ROOT, "article-001", ".exe")).not.toThrow();
-    // 扩展名由调用方给定，不走用户输入；这里只锁死 id，扩展名在服务层固定传 .md
+  it("扩展名固定为 .md，API 不再接受外部传入的扩展名", () => {
+    // 外部审计指出的问题：旧版本有个 ext 参数，测试名字说"拒绝 .exe"、断言却是"不抛错"。
+    // 现在参数已删除；这条断言防止有人再加回来。
+    expect(resolveArticlePath(ROOT, "article-001").endsWith(".md")).toBe(true);
+    expect(resolveArticlePath.length).toBe(2);
   });
 });

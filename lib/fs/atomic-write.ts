@@ -25,16 +25,13 @@ export async function writeFileAtomic(filePath: string, data: string | Uint8Arra
     handle = await fs.open(tmpPath, "wx");
     await handle.writeFile(data);
     await handle.sync();
-  } catch (error) {
-    await handle?.close().catch(() => {});
-    await fs.rm(tmpPath, { force: true }).catch(() => {});
-    throw error;
-  }
-  await handle.close();
-
-  try {
+    // close 必须在清理保护之内：它自己也会失败（外部审计指出的缺口）。
+    // 关不掉就意味着临时文件还占着，后面的 rename 也不该继续。
+    await handle.close();
+    handle = undefined;
     await renameWithRetry(tmpPath, filePath);
   } catch (error) {
+    await handle?.close().catch(() => {});
     await fs.rm(tmpPath, { force: true }).catch(() => {});
     throw error;
   }
