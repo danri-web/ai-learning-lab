@@ -39,9 +39,10 @@ const RULES: Rule[] = [
     allow: [],
   },
   {
-    name: "只允许 lib/fs 与 lib/security/paths 接触文件系统（扫 import，别名绕不过）",
+    name: "只允许 lib/fs、lib/security/paths、lib/content 接触文件系统（扫 import，别名绕不过）",
     pattern: FS_IMPORT,
-    allow: ["lib/fs/atomic-write.ts", "lib/security/paths.ts"],
+    // 以 "/" 结尾 = 整个目录放行。lib/content 是 docs/架构决策.md D4 指定的"唯一读正文的地方"。
+    allow: ["lib/fs/atomic-write.ts", "lib/security/paths.ts", "lib/content/"],
   },
   {
     name: "禁止绕过原子写入（写函数名直接调用）",
@@ -69,9 +70,15 @@ const FILES: SourceFile[] = SOURCE_DIRS.flatMap((dir) =>
   })),
 );
 
+function isAllowed(file: SourceFile, rule: Rule): boolean {
+  return rule.allow.some((entry) =>
+    entry.endsWith("/") ? file.path.startsWith(entry) : file.path === entry,
+  );
+}
+
 function scan(files: SourceFile[], rule: Rule): string[] {
   return files
-    .filter((file) => !rule.allow.includes(file.path))
+    .filter((file) => !isAllowed(file, rule))
     .flatMap((file) =>
       Array.from(file.text.matchAll(new RegExp(rule.pattern.source, "g"))).map(
         (match) => `${file.path}:${match[0]}`,

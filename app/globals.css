@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -135,4 +136,89 @@
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-ring;
   }
+}
+
+/* ============================================================
+   正文排版（Markdown 渲染）
+   把 typography 插件的颜色全部接到设计令牌上 —— 不让插件自带的灰色
+   和主题打架。字号/行高保留插件默认（那是排版的基准）。
+   ============================================================ */
+.prose-lab {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-lead: var(--muted-foreground);
+  --tw-prose-links: var(--primary);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--border);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--muted-foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-pre-code: var(--foreground);
+  --tw-prose-pre-bg: var(--surface);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+}
+
+/* 代码块：行内代码给个低调的底，块级不抢眼 */
+.prose-lab :not(pre) > code {
+  background-color: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.3rem;
+  font-weight: 400;
+}
+.prose-lab :not(pre) > code::before,
+.prose-lab :not(pre) > code::after {
+  content: none;
+}
+.prose-lab pre {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* 代码块语法高亮（highlight.js 的类名）→ 全部映射到设计令牌。
+   换掉 Shiki 的原因见 components/knowledge/article-markdown.tsx 顶部注释。 */
+.prose-lab .hljs-comment,
+.prose-lab .hljs-quote {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.prose-lab .hljs-keyword,
+.prose-lab .hljs-literal,
+.prose-lab .hljs-built_in,
+.prose-lab .hljs-type,
+.prose-lab .hljs-meta,
+.prose-lab .hljs-selector-tag {
+  color: var(--primary);
+}
+.prose-lab .hljs-string,
+.prose-lab .hljs-addition,
+.prose-lab .hljs-attr,
+.prose-lab .hljs-template-variable {
+  color: var(--success);
+}
+.prose-lab .hljs-number,
+.prose-lab .hljs-symbol,
+.prose-lab .hljs-bullet,
+.prose-lab .hljs-variable {
+  color: var(--warning);
+}
+.prose-lab .hljs-title,
+.prose-lab .hljs-function,
+.prose-lab .hljs-section,
+.prose-lab .hljs-name {
+  color: var(--foreground);
+  font-weight: 600;
+}
+.prose-lab .hljs-deletion {
+  color: var(--destructive);
+}
+.prose-lab .hljs-emphasis {
+  font-style: italic;
+}
+.prose-lab .hljs-strong {
+  font-weight: 700;
 }

@@ -2,11 +2,41 @@
 
 一个本地优先的 AI 学习、知识管理与资源收藏工作台。
 
-**当前状态：阶段 2 完成（设计系统与页面骨架）。** 五个页面能点、能切换、手机能用；**但还没有数据** —— 笔记、收藏、搜索、任务都要到后面的阶段才实现，界面上凡是「阶段 X 接入」的地方现在都是空的。
+**当前状态：阶段 3a 完成（只读笔记）。** 现在能读你自己的 Markdown 笔记了：列表、详情、GFM 表格、代码高亮、公式、文章目录。**还不能写** —— 新建 / 编辑 / 删除是阶段 3b，按钮仍是禁用的占位。
 
 ![仪表盘](docs/screenshot-dashboard.png)
 
+![笔记详情](docs/screenshot-article.png)
+
 > 完整需求、验收标准与八阶段路线在 **[docs/需求书.md](docs/需求书.md)**（原始需求书，内容保持原样）。
+
+## 写一篇笔记（现在就可用）
+
+把 `.md` 文件放进 `content/articles/`，刷新 `/knowledge` 就能看到。**文件名就是文章 id**，frontmatter 里的 `id` 必须与它一致：
+
+```markdown
+---
+id: transformer-basics
+title: Transformer 基础
+category: Deep Learning
+tags:
+  - Transformer
+  - Attention
+createdAt: "2026-10-20"
+updatedAt: "2026-10-27"
+---
+
+正文从这里开始。支持 GFM 表格、```代码块```、$行内公式$、$$块级公式$$。
+```
+
+规则（都有测试守着）：
+- `id`：小写字母/数字/连字符，1–64 位，且必须是文件名去掉 `.md` 之后的部分
+- `updatedAt` 不能早于 `createdAt`；日期格式 `YYYY-MM-DD`
+- `tags` 可以省略（等于空数组），其余字段必填
+- 以 `_` 开头的文件被当作模板/草稿，**不进列表**
+- frontmatter 写错的笔记只会单独报错（列表顶上会提示），不会让整页崩掉
+
+> `content/articles/` **不在这个仓库里**（主仓库是公开的，笔记属于你自己的私有仓库 —— 见 [docs/架构决策.md](docs/架构决策.md) D5）。
 
 ## 设计原则
 
@@ -58,9 +88,12 @@ npm run format:check # Prettier 只检查
 ## 目录
 
 ```text
-app/(workspace)/   五个页面：总览 / 知识库 / 资源收藏 / 学习任务 / 设置
+app/(workspace)/   页面：总览 / 知识库（含 [id] 详情）/ 资源收藏 / 学习任务 / 设置
 components/layout/ 外壳：侧栏、顶栏、手机抽屉、页面标题
 components/ui/     shadcn 组件 + 空状态
+components/knowledge/  Markdown 渲染器
+lib/content/       读笔记（唯一碰「正文文件」的地方）
+lib/markdown/      目录提取、正文整形
 lib/               工具函数（目前只有 shadcn 的 cn()）
 tests/             Vitest 单元测试（15 条）
 docs/              需求书与截图
@@ -75,7 +108,8 @@ public/            静态资源
 | --- | --- | --- |
 | 1 | 工程初始化 | ✅ 2026-10-29 |
 | 2 | 设计系统与页面框架 | ✅ 2026-10-29 |
-| 3 | Markdown 知识库 | ⬜ 未开始 |
+| 3a | Markdown 知识库：只读（列表 / 详情 / 渲染） | ✅ 2026-10-29 |
+| 3b | Markdown 知识库：写入（编辑器 / 保存 / 删除） | ⬜ 未开始 |
 | 4 | 资源收藏中心 | ⬜ 未开始 |
 | 5 | 全文搜索 | ⬜ 未开始 |
 | 6 | 学习任务与 Dashboard | ⬜ 未开始 |
@@ -119,3 +153,13 @@ public/            静态资源
 ## License
 
 [MIT](LICENSE) © 2026 Daniel Riviera
+
+### 阶段 3a 具体做了什么
+
+- **读文件，不建库**：`content/articles/*.md` 每次请求都扫一遍（D1），没有数据库、没有索引、没有缓存
+- **frontmatter 用 Zod 校验**：写错的笔记单独报错并在列表顶部提示，不让整页崩；`id` 必须与文件名一致
+- **渲染**：react-markdown + remark-gfm（表格/任务列表）+ remark-math & rehype-katex（公式）+ rehype-highlight（代码高亮）+ 自动目录
+- **不执行正文里的 HTML**（不装 rehype-raw，源码闸门守着）
+- **手机上不横向溢出**：宽表格套横向滚动容器；实测 390px 溢出 0
+- **两个页面都是动态渲染**（`force-dynamic`），刷新即读到文件最新内容
+- 断言：81 条（frontmatter 好坏样本 21 条、目录提取 8 条、路径/原子写/源码闸门等）

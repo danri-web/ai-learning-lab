@@ -17,6 +17,30 @@ import { UnsafePathError, resolveArticleFile, resolveArticlePath } from "@/lib/s
  */
 const TEST_TMP_ROOT = path.join(process.cwd(), "node_modules", ".vitest-tmp");
 
+/**
+ * Windows 上「目录里有 junction」时，`fs.rm(recursive)` 会 ENOTEMPTY：
+ * 它会试图递归进链接指向的目标。所以先逐个把链接单独删掉（rmdir 只删链接本身），
+ * 再删剩下的普通文件/目录。
+ */
+async function removeTreeSafely(target: string): Promise<void> {
+  let entries;
+  try {
+    entries = await fs.readdir(target, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const full = path.join(target, entry.name);
+    const stat = await fs.lstat(full).catch(() => null);
+    if (!stat) continue;
+    if (stat.isSymbolicLink()) {
+      await fs.rmdir(full).catch(() => {});
+      continue;
+    }
+    await fs.rm(full, { recursive: true, force: true }).catch(() => {});
+  }
+  await fs.rmdir(target).catch(() => {});
+}
 /** 探测一次：这台机器能不能建 junction / 文件级符号链接（探测失败 = 不支持） */
 async function probe(kind: "junction" | "file"): Promise<boolean> {
   const probeDir = await fs.mkdtemp(path.join(TEST_TMP_ROOT, "probe-"));
@@ -32,7 +56,7 @@ async function probe(kind: "junction" | "file"): Promise<boolean> {
   } catch {
     return false;
   } finally {
-    await fs.rm(probeDir, { recursive: true, force: true });
+    await removeTreeSafely(probeDir);
   }
 }
 
@@ -52,7 +76,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  if (dir) await fs.rm(dir, { recursive: true, force: true });
+  if (dir) await removeTreeSafely(dir);
 });
 
 describe("正文目录是链接时", () => {
