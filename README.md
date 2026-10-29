@@ -91,6 +91,16 @@ public/            静态资源
 - **断言**：令牌 ↔ 需求书、导航 ↔ 页面文件、脚本 ↔ 安全要求，共 19 条
 - **自查修掉的 6 处问题**（生产构建 + DevTools 协议实测，不是看代码猜的）：五个页面标题重复、404 页沿用 Next 默认样式且没有导航、404 页 React 水合错误 `#418`、次要文字对比度只有 4.58:1、跳过导航链接不移动焦点、长字符串（如长 URL）横向溢出 542px
 
+### 阶段 3 的闸门（功能还没写，先把门锁上）
+
+阶段 3 才开始读写文件，但三条防线已经先落地，并且每条都用恶意样本撞过：
+
+| 防线 | 实现 | 断言 |
+| --- | --- | --- |
+| 路径穿越 | [lib/security/paths.ts](lib/security/paths.ts)：id 白名单 + 解析后必须仍在正文目录内 | 26 个恶意 id（`../`、盘符、UNC、`con`、NUL 字节、全角字符…）全部拒绝 |
+| 半截文件 | [lib/fs/atomic-write.ts](lib/fs/atomic-write.ts)：临时文件 + fsync + rename（Windows 上带退避重试） | 并发 8 个写入者不互相踩、失败时原文件不变、不留 `.tmp` |
+| XSS 面 | [tests/security-gates.test.ts](tests/security-gates.test.ts)：源码级禁令 | 禁止 `dangerouslySetInnerHTML`、`eval`、`rehype-raw`、绕过原子写入写文件（扫描器本身也有假样本自检） |
+
 ## 安全
 
 - 默认只监听 `127.0.0.1`，不自动开放局域网或公网
