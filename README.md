@@ -1,395 +1,90 @@
 # AI Learning Lab
 
-> 一个本地优先的 AI 学习、知识管理与资源收藏工作台。
+一个本地优先的 AI 学习、知识管理与资源收藏工作台。
 
-**项目状态：** 阶段 1 完成（工程初始化）；业务功能尚未实现  
-**开发平台：** Windows  
-**访问方式：** 默认仅本机；完成认证与安全配置后支持同一局域网内的 Android 手机访问  
-**设计方向：** 参考 Linear 的专业深色界面设计理念，不复制其品牌资产
+**当前状态：阶段 1 完成（工程初始化）。** 仓库里现在是一个能跑起来的骨架：深色主题还没做，笔记、收藏、搜索、任务都还没有。进度见下方表格，别把未实现的部分当成可用。
 
-## 1. 项目目标
+> 完整需求、验收标准与八阶段路线在 **[docs/需求书.md](docs/需求书.md)**（原始需求书，内容保持原样）。
 
-AI Learning Lab 用于系统学习和整理机器学习、深度学习、Transformer、LLM、Agent、Harness 等领域的知识。首版优先解决两个问题：**知识笔记管理**与**技术资源收藏**，随后加入本地全文搜索、学习任务和进度面板。
+## 设计原则
 
-核心原则：
+- **Local-first**：内容与数据库都在自己电脑上，不依赖云
+- **Knowledge-first**：先保证笔记、资源与搜索好用
+- **Secure by default**：默认只监听 `127.0.0.1`，局域网访问须显式开启并保护
+- **AI-ready, not AI-dependent**：为将来的 AI 功能留口子，MVP 不依赖任何模型服务
 
-- **Local-first：** 内容与数据库存储在自己的电脑上。
-- **Knowledge-first：** 优先保证笔记、资源与搜索好用。
-- **Data ownership：** 数据可备份、恢复和迁移。
-- **Secure by default：** 默认只允许本机访问；局域网访问须显式开启并保护。
-- **Incremental delivery：** 每次只开发和验收一个阶段。
-- **AI-ready, not AI-dependent：** 为未来 AI 功能保留扩展空间，MVP 不依赖模型服务。
-
-## 2. MVP 功能范围
-
-### 必须实现
-
-- [ ] 专业深色主题和响应式布局
-- [ ] Dashboard 首页
-- [ ] Markdown 知识文章的创建、查看、编辑、删除
-- [ ] GFM、代码高亮、数学公式、文章目录
-- [ ] 分类、标签和基础内部链接
-- [ ] 技术资源收藏、编辑、删除、筛选和排序
-- [ ] 文章与资源的本地全文搜索
-- [ ] 学习任务、状态、关联文章和资源
-- [ ] 数据备份、校验和恢复
-- [ ] 经过身份验证的局域网访问
-- [ ] 基础测试、错误处理和使用文档
-
-### 首版不做
-
-- 多人实时协作、复杂角色系统、公开注册
-- 云同步、微服务、云端部署
-- Notion 式富文本编辑器、复杂知识图谱
-- 自动爬虫、整站抓取、复杂推荐系统
-- 向量数据库、RAG、完整 Agent/Harness 执行平台
-- 依赖在线模型才能使用的核心功能
-
-## 3. 技术栈
-
-| 领域 | 选型 |
-| --- | --- |
-| 全栈框架 | Next.js + React + TypeScript |
-| UI | Tailwind CSS + shadcn/ui + Lucide |
-| API | Next.js Route Handlers |
-| 数据库 | SQLite + Drizzle ORM |
-| 文章正文 | Markdown 文件（权威来源） |
-| Markdown 渲染 | react-markdown + remark-gfm |
-| 公式 | remark-math + rehype-katex |
-| 代码高亮 | Shiki |
-| 搜索 | SQLite FTS5（需验证中文搜索策略） |
-| 校验 | Zod |
-| 单元测试 | Vitest |
-| 端到端测试 | Playwright |
-| 版本管理 | Git |
-
-采用**模块化单体架构**。页面组件不得直接读写数据库或文件；写操作通过服务层完成，并经过输入校验、认证与授权检查。依赖版本以开发时兼容的稳定版本为准。
-
-## 4. 建议目录结构
-
-```text
-ai-learning-lab/
-├── app/
-│   ├── (workspace)/
-│   │   ├── page.tsx
-│   │   ├── knowledge/
-│   │   ├── resources/
-│   │   ├── learning/
-│   │   └── settings/
-│   └── api/
-│       ├── articles/
-│       ├── resources/
-│       ├── search/
-│       ├── learning/
-│       └── backup/
-├── components/
-│   ├── layout/
-│   ├── ui/
-│   ├── editor/
-│   └── knowledge/
-├── features/
-│   ├── articles/
-│   ├── resources/
-│   ├── search/
-│   ├── learning/
-│   └── settings/
-├── lib/
-│   ├── db/
-│   ├── security/
-│   ├── markdown/
-│   └── utils/
-├── content/articles/
-├── data/
-├── tests/
-├── scripts/
-├── docs/
-├── public/
-└── README.md
-```
-
-这是目标结构，不要求在第一阶段创建所有空目录。
-
-## 5. 数据设计
-
-### 文章
-
-文章正文存储为 Markdown 文件，文章具有独立、稳定的 ID，不能依赖标题或文件名作为唯一标识。
-
-```markdown
----
-id: "article_001"
-title: "Transformer 基础"
-category: "Deep Learning"
-tags:
-  - Transformer
-  - Attention
-createdAt: "2026-10-29"
-updatedAt: "2026-10-29"
----
-
-# Transformer 基础
-
-这里是文章正文。
-```
-
-SQLite 存储文章元数据、资源、分类标签、任务与可重建搜索索引。建议实体：`articles`、`resources`、`categories`、`tags`、`article_tags`、`resource_tags`、`learning_tasks` 和 FTS5 搜索表。
-
-- Markdown 文件是文章正文的权威来源。
-- 数据库结构通过迁移管理。
-- 文章新增、修改、删除后必须同步搜索索引。
-- 允许重建搜索索引，避免索引损坏造成不可恢复的数据丢失。
-- 文件写入应避免路径遍历，并尽可能采用临时文件与原子替换。
-
-## 6. 视觉与交互规范
-
-### 设计令牌（初始建议）
-
-| 用途 | 色值 |
-| --- | --- |
-| Background | `#0B0D12` |
-| Surface | `#12151C` |
-| Elevated | `#191D26` |
-| Border | `#292E39` |
-| Primary text | `#F1F3F7` |
-| Muted text | `#9299A8` |
-| Accent | `#8B82F6` |
-| Success | `#48B58A` |
-| Warning | `#E5AC62` |
-| Danger | `#E06C75` |
-
-统一使用 CSS 变量/设计令牌，不要在组件中到处硬编码颜色。
-
-### 布局
-
-- **桌面端：** Sidebar + Top Bar + Main Content；文章详情可显示目录侧栏。
-- **手机端：** 单列主内容、抽屉导航、可折叠目录、无横向溢出。
-- **交互：** `Ctrl+K` 搜索、`Esc` 关闭弹窗、清晰的焦点状态、加载/空/错误状态、删除确认、未保存提示。
-- **可访问性：** 键盘可操作、合理的文字对比度、足够大的触控区域。
-
-## 7. 八阶段开发路线
-
-### 阶段 1：工程初始化（预计 4–8 小时）
-
-**任务：** 初始化 Next.js、TypeScript、Tailwind、shadcn/ui、Git、Lint、格式化与测试基础；创建 README、环境变量示例和合理目录。
-
-**验收：** 依赖安装、开发服务器、TypeScript 检查、Lint 和 Git 提交正常。
-
-**不要做：** 业务模块、AI、云部署、复杂数据库。
-
-### 阶段 2：设计系统与页面框架（预计 6–10 小时）
-
-**任务：** 设计令牌、Sidebar、Top Bar、Dashboard、Knowledge、Resources、Learning、Settings 页面骨架及手机导航。
-
-**验收：** 所有页面可导航；桌面与手机布局合理；无明显横向溢出；键盘焦点可见。
-
-**不要做：** 大量动画、复制 Linear 品牌素材、伪造业务数据。
-
-### 阶段 3：Markdown 知识库（预计 10–16 小时）
-
-**任务：** 文章 CRUD、Markdown 编辑与预览、GFM、KaTeX、Shiki、文章目录、分类标签、内部链接、未保存提醒。
-
-**验收：** 能创建、保存、重新打开、修改、链接和删除一篇 Transformer 笔记；重启后数据保留；相关测试通过。
-
-**不要做：** 复杂富文本、实时协作、AI 自动写作。
-
-### 阶段 4：资源收藏中心（预计 6–10 小时）
-
-**任务：** 资源 CRUD、URL、标题、描述、类型、标签、分类、筛选、排序和关联文章。类型包括 Paper、Tutorial、Documentation、GitHub Repository、Video、Tool、Other。
-
-**验收：** 能收藏论文、GitHub 项目和技术文档，编辑标签并筛选；重启后数据保留。
-
-**不要做：** 自动爬虫、整站下载、浏览器插件、AI 推荐。
-
-### 阶段 5：全文搜索（预计 8–12 小时）
-
-**任务：** SQLite FTS5 索引、文章与资源搜索、`Ctrl+K` 弹窗、分类结果、摘要、高亮、键盘导航和索引重建。
-
-**验收：** 搜索 Transformer、Agent 可找到对应内容；增删改后索引更新；中英文搜索均经过实际测试。
-
-**注意：** 默认 FTS5 不等于完善的中文分词，需要选定并测试适合中文的索引策略。
-
-**不要做：** Elasticsearch、向量数据库、在线搜索 API。
-
-### 阶段 6：学习任务与 Dashboard（预计 6–10 小时）
-
-**任务：** 学习任务 CRUD、Todo / In Progress / Done 状态、截止日期、文章和资源关联、最近内容、基础统计。
-
-**验收：** 能建立“学习 Transformer Attention”任务、关联资料、更新状态，并在 Dashboard 看到真实数据。
-
-**不要做：** 甘特图、复杂项目管理、AI 排课、排行榜。
-
-### 阶段 7：备份、安全与局域网访问（预计 8–14 小时）
-
-**任务：** 数据导出、备份校验、恢复预览与确认、回滚方案、认证、会话保护、写入安全检查、Windows 局域网启动说明、Android 访问验证。
-
-**验收：** 默认仅本机可访问；局域网模式下未经认证的设备无法访问受保护内容；手机可正常使用；备份能够恢复。
-
-**不要做：** 公网端口开放、默认公开密码、关闭安全校验、把开发服务器当正式服务。
-
-### 阶段 8：测试与本地发布（预计 6–10 小时）
-
-**任务：** TypeScript、Lint、单元和端到端测试、Windows/Android 浏览器检查、性能与可访问性检查、备份恢复测试、README 和启动脚本完善。
-
-**验收：** 核心流程通过；项目能按文档重新安装、启动和恢复数据；已知问题有明确记录。
-
-**不要做：** 新增与 MVP 无关的业务功能。
-
-**总工作量估计：54–86 小时。** 每周投入 6–10 小时，可预留约 7–15 周，具体以实际开发和学习情况为准。
-
-## 8. 安全要求
-
-1. 默认只监听 `127.0.0.1`，不自动开放局域网或公网。
-2. 局域网访问必须主动开启，并采用生产构建及受保护的启动配置。
-3. 读取受保护内容和所有写入操作均需认证；写入、删除和恢复还需授权检查。
-4. 对写入操作采取 CSRF / Origin 防护，限制请求体大小。
-5. 所有外部输入通过 Zod 等方式校验。
-6. 禁止路径遍历、任意文件读写和危险 HTML 注入。
-7. 外部链接仅允许安全协议，不执行收藏内容中的代码。
-8. 不允许服务端随意抓取用户提供的 URL，避免 SSRF 风险。
-9. 不将密码、密钥、数据库或备份文件放进 `public/` 或提交到 Git。
-10. 备份必须同时覆盖 Markdown、SQLite 和必要配置，并验证恢复。
-11. 不直接暴露公网；不可信 Wi-Fi 或敏感数据场景需要 HTTPS 或可信安全隧道。
-12. 局域网 HTTP 不提供传输加密，不能把“同一 Wi-Fi”视为安全保证。
-
-**注意：** 开发调试时可以按需使用 `npm run dev -- --hostname 0.0.0.0` 检查网络连通性，但它不是正式局域网部署方案，也不能替代认证、访问控制和传输安全。
-
-## 9. 本地运行说明
-
-> 以下内容已在阶段 1（2026-10-29）于本机实际执行并验证：Windows 10 19045 x64、Node.js v24.21.0、npm 11.19.0、Git 2.56.0。未验证项会明确标注，不把未执行的检查说成已通过。
-
-### 前置环境
-
-- Windows（本机验证：Windows 10 19045，x64）
-- Node.js v24.21.0（npm 11.19.0）
-- Git 2.56.0
-- VS Code 或 Codex Desktop
-
-### 已实现的命令
+## 快速开始
 
 ```powershell
-npm install          # 依赖安装（本机首次约 8 分钟，357 个包 + 测试/格式化依赖）
-npm run dev          # 开发服务器 → http://127.0.0.1:3000
+git clone https://github.com/danri-web/ai-learning-lab.git
+cd ai-learning-lab
+npm install
+npm run dev
+```
+
+打开 <http://127.0.0.1:3000>。
+
+环境：Windows 10 + Node.js 24.21 + npm 11.19（实测版本）。环境变量示例见 `.env.example`，复制为 `.env.local` 后修改。
+
+## 已实现的脚本
+
+```powershell
+npm run dev          # 开发服务器（127.0.0.1:3000）
 npm run build        # 生产构建
 npm run start        # 运行生产构建
-npm run lint         # ESLint（eslint 9 扁平配置）
-npm run typecheck    # tsc --noEmit
-npm run test         # Vitest 单元测试
-npm run test:watch   # Vitest 监听模式
+npm run lint         # ESLint 9
+npm run typecheck    # next typegen && tsc --noEmit
+npm run test         # Vitest
+npm run test:watch   # Vitest 监听
 npm run format       # Prettier 写入
 npm run format:check # Prettier 只检查
 ```
 
-`npm run test:e2e`（Playwright）阶段 1 **未提供**：尚未安装 Playwright，因此不放这个脚本，避免出现「看起来有、跑了就报错」的假入口。端到端测试按 README §7 放在阶段 8。
+端到端测试（Playwright）尚未提供，按需求书放在阶段 8 —— 所以这里没有 `test:e2e` 脚本，避免出现「看起来有、跑就报错」的假入口。
 
-### 环境变量
+## 技术栈
 
-复制 `.env.example` 为 `.env.local` 后按需修改。阶段 1 只读取 `HOST`（默认 `127.0.0.1`）与 `PORT`（默认 `3000`）；数据库路径、认证密钥等变量在对应阶段加入，不要提前写进代码。
-
-### 版本基线
-
-| 包 | 版本 |
+| 领域 | 选型 |
 | --- | --- |
-| Next.js | 16.4.3（Turbopack 构建） |
-| React | 19.3.0 |
-| Tailwind CSS | 4.x（`@tailwindcss/turbopack`，无 `postcss.config`） |
-| shadcn/ui | CLI 4.23.0，style `radix-nova`，图标 Lucide，CSS 变量主题 |
-| TypeScript | 5.x（`strict: true`） |
-| Vitest | 5.0.5 |
-| Prettier | 3.9.10 |
+| 框架 | Next.js 16.4.3（App Router、Turbopack） |
+| UI | React 19.3、Tailwind CSS 4、shadcn/ui（`radix-nova`）、Lucide |
+| 语言 | TypeScript 5（`strict: true`） |
+| 测试 | Vitest 5 |
+| 格式化 | Prettier 3 |
+| 计划中 | SQLite + Drizzle ORM + FTS5 全文搜索（阶段 3 起） |
 
-### 手机局域网访问
-
-仅在阶段 7 完成认证与安全配置后开启。手机和电脑应连接到允许互相通信的局域网，通过电脑的局域网 IP 和配置的端口访问。需检查 Windows 防火墙规则；不得为解决连接问题而关闭全部防火墙。
-
-## 10. 未来扩展（MVP 完成后）
-
-**P1 — 知识增强：** 双向链接、反向引用、知识图谱、PDF 导入、版本历史、中文搜索优化。
-
-**P2 — AI 功能：** AI 摘要、标签建议、语义搜索、RAG、可选 Ollama 或兼容模型 API。所有 AI 功能必须可关闭。
-
-**P3 — AI 实验室：** 深度学习实验记录、Transformer 可视化、Agent 工具调用日志、Harness 架构与评测记录。
-
-**P4 — 多人协作：** 多用户账号、角色权限、共享空间、审计日志；不默认引入实时协作。
-
-## 11. Codex 开发协作规范
-
-Codex 在每次修改时必须遵守：
-
-1. 先阅读现有代码与本 README，避免覆盖已有成果。
-2. **一次只执行一个阶段**；完成后等待用户确认。
-3. 不随意重写稳定模块，不增加无必要依赖。
-4. 使用 TypeScript 严格类型，避免无理由使用 `any`。
-5. UI、业务逻辑和数据访问分层。
-6. 所有输入校验，所有失败路径提供错误处理。
-7. 不把密钥放进前端或代码仓库。
-8. 保持 Windows 开发与 Android 响应式兼容。
-9. 新功能添加必要测试，并执行可用的检查。
-10. 不能把未执行的测试说成已通过。
-11. 每阶段结束后建议创建 Git 提交。
-12. 不自动进入下一阶段。
-
-### 每阶段报告格式
+## 目录
 
 ```text
-阶段名称：
-
-一、已完成
-- ...
-
-二、修改的文件
-- ...
-
-三、运行与验证
-- 命令：
-- 结果：
-
-四、验收情况
-- 通过：
-- 未通过：
-
-五、已知问题
-- ...
-
-六、安全注意事项
-- ...
-
-七、下一阶段建议
-- ...
-
-当前阶段完成，等待用户确认。
+app/          页面与 Route Handlers（目前只有模板首页）
+lib/          工具函数（目前只有 shadcn 的 cn()）
+tests/        Vitest 单元测试
+docs/         需求书
+public/       静态资源
 ```
 
-## 12. 首次发送给 Codex 的指令
+`components/`、`features/`、`data/`、`content/articles/` 等目录在对应阶段创建，不提前建空壳。
 
-```text
-请阅读项目根目录的 README.md，并将其作为项目需求和开发约束。
+## 阶段进度
 
-项目名称：AI Learning Lab。
-平台：Windows 本地开发；后续支持受保护的 Android 局域网访问。
-重点：Markdown 知识库与技术资源收藏。
-设计：参考 Linear 的专业深色风格，不复制其品牌资产。
-架构：Next.js + TypeScript + Tailwind + shadcn/ui + SQLite，模块化单体。
+| 阶段 | 内容 | 状态 |
+| --- | --- | --- |
+| 1 | 工程初始化 | ✅ 2026-10-29 |
+| 2 | 设计系统与页面框架 | ⬜ 未开始 |
+| 3 | Markdown 知识库 | ⬜ 未开始 |
+| 4 | 资源收藏中心 | ⬜ 未开始 |
+| 5 | 全文搜索 | ⬜ 未开始 |
+| 6 | 学习任务与 Dashboard | ⬜ 未开始 |
+| 7 | 备份、安全与局域网访问 | ⬜ 未开始 |
+| 8 | 测试与本地发布 | ⬜ 未开始 |
 
-请先检查当前目录。如果为空，从阶段 1 开始；如果已有代码，先分析可复用部分。
+## 安全
 
-现在仅执行“阶段 1：工程初始化”。
-不要提前开发其他阶段，也不要接入 AI 或配置公网部署。
+- 默认只监听 `127.0.0.1`，不自动开放局域网或公网
+- `.env*`、`data/`、`backups/` 已排除在 git 之外，仓库里不会有数据库、备份或密钥
+- 不提供服务端抓取任意 URL 的能力（避免 SSRF），外部链接只允许安全协议
+- 详细条目见 [docs/需求书.md](docs/需求书.md) §8
 
-完成后列出修改文件、执行的检查、验收结果、遗留问题，等待我确认。
-```
+## License
 
-## 13. MVP 最终验收清单
-
-- [ ] 可以创建、编辑、删除和重新打开 AI 学习笔记
-- [ ] Markdown、代码、公式和文章目录显示正确
-- [ ] 可以收藏、编辑、筛选技术资源
-- [ ] 可以通过标签、分类和搜索找到内容
-- [ ] 可以创建学习任务并查看真实进度
-- [ ] Dashboard 提供有用的入口与统计
-- [ ] Windows 本地使用稳定
-- [ ] Android 手机可在受保护的局域网模式下访问
-- [ ] 未认证访问受到阻止
-- [ ] 全部数据可备份并成功恢复
-- [ ] 核心测试通过，README 可用于重新部署
-
-**MVP 的成功标准：** 能稳定用于每天的 AI 学习，而不是拥有最多的功能。
+[MIT](LICENSE) © 2026 Daniel Riviera
