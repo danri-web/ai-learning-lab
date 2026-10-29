@@ -88,7 +88,7 @@ export function resolveArticlePath(articlesRoot: string, id: string): string {
  */
 /**
  * Windows / macOS 的常见文件系统大小写不敏感：`fs.realpath()` 返回的是**规范大小写**，
- * 而调用方传进来的可能是别的写法（`D:\DSH_WORK` vs `D:\dsh_work`）。
+ * 而调用方传进来的可能是别的写法（同一路径全大写 vs 全小写）。
  * 用大小写敏感的比较去判等，会把合法目录误判成"被链接过的目录"直接拒绝。
  * 这是外部审计 v2 的 F1 指出的问题 —— 修好后别再改回 `!==`。
  */
