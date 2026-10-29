@@ -2,18 +2,36 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSyncExternalStore } from "react";
 
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS, isActivePath } from "./nav-items";
 
+/**
+ * 「是否已水合」：服务端渲染 false，客户端水合完成后变 true。
+ *
+ * 为什么必须这样：404 页面在生产构建里是**预渲染好的静态 HTML**，会被复用于任意
+ * 未匹配的地址。此时服务端拿到的 pathname 是 `/_not-found`，而浏览器地址栏是真实
+ * 地址 → 两边算出的「高亮项」不一致 → React 抛 Hydration error #418。
+ * 所以高亮一律等水合之后再画。别再改回「服务端直接算路径」的写法。
+ */
+const subscribe = () => () => {};
+const useHydrated = () =>
+  useSyncExternalStore(
+    subscribe,
+    () => true,
+    () => false,
+  );
+
 /** 侧栏导航。桌面固定显示，手机放在抽屉里（同一个组件）。 */
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const hydrated = useHydrated();
 
   return (
     <nav aria-label="主导航" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2">
       {NAV_ITEMS.map((item) => {
-        const active = isActivePath(pathname, item.href);
+        const active = hydrated && isActivePath(pathname, item.href);
         const Icon = item.icon;
         return (
           <Link

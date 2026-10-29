@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { BookOpen, Plus } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+
+export const metadata: Metadata = { title: "知识库" };
 
 export default function KnowledgePage() {
   return (

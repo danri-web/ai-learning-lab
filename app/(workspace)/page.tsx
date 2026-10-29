@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { BookOpen, Library, ListChecks, Search } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
@@ -9,6 +10,8 @@ const STATS = [
   { label: "学习任务", hint: "阶段 6 接入", icon: ListChecks },
   { label: "搜索条目", hint: "阶段 5 接入", icon: Search },
 ] as const;
+
+export const metadata: Metadata = { title: "总览" };
 
 export default function DashboardPage() {
   return (

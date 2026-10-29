@@ -21,9 +21,11 @@ export function EmptyState({
   return (
     <div className="grid place-items-center rounded-lg border border-dashed border-border bg-surface/50 px-6 py-12 text-center">
       {icon ? <div className="mb-3 text-muted-foreground">{icon}</div> : null}
-      <p className="text-sm font-medium text-foreground">{title}</p>
-      <p className="mt-1.5 max-w-md text-sm text-muted-foreground">{description}</p>
-      <p className="mt-4 text-[11px] tracking-wide text-muted-foreground/80 uppercase">{stage}</p>
+      <p className="text-sm font-medium break-words text-foreground">{title}</p>
+      <p className="mt-1.5 max-w-md text-sm break-words text-muted-foreground">{description}</p>
+      <p className="mt-4 text-[11px] tracking-wide break-words text-muted-foreground uppercase">
+        {stage}
+      </p>
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
   );

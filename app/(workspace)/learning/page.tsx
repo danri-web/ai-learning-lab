@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { ListChecks, Plus } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
@@ -9,6 +10,8 @@ const STATUSES = [
   { label: "进行中", dot: "bg-warning" },
   { label: "已完成", dot: "bg-success" },
 ] as const;
+
+export const metadata: Metadata = { title: "学习任务" };
 
 export default function LearningPage() {
   return (

@@ -19,7 +19,7 @@ export function PageHeader({
           <h1 className="text-xl font-semibold tracking-tight md:text-2xl">{title}</h1>
           <span className="text-[11px] tracking-wide text-muted-foreground uppercase">{en}</span>
         </div>
-        <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{description}</p>
+        <p className="mt-1.5 max-w-2xl text-sm break-words text-muted-foreground">{description}</p>
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>

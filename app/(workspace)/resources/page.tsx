@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Library, Plus } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
@@ -13,6 +14,8 @@ const RESOURCE_TYPES = [
   "Tool",
   "Other",
 ] as const;
+
+export const metadata: Metadata = { title: "资源收藏" };
 
 export default function ResourcesPage() {
   return (

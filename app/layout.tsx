@@ -13,7 +13,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Learning Lab",
+  title: {
+    default: "AI Learning Lab",
+    template: "%s · AI Learning Lab",
+  },
   description: "本地优先的 AI 学习、知识管理与资源收藏工作台",
 };
 

@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -25,6 +25,30 @@ describe("导航项", () => {
     expect(unique(NAV_ITEMS.map((item) => item.href))).toBe(true);
     expect(unique(NAV_ITEMS.map((item) => item.label))).toBe(true);
     expect(unique(NAV_ITEMS.map((item) => item.en))).toBe(true);
+  });
+
+  it("每个页面都用侧栏标签当自己的标题（浏览器标签页能区分五个页面）", () => {
+    const wrong = NAV_ITEMS.filter((item) => {
+      const source = readFileSync(pageFileFor(item.href), "utf8");
+      return !source.includes(`title: "${item.label}"`);
+    }).map((item) => item.href);
+    expect(wrong).toEqual([]);
+  });
+});
+
+describe("对外壳的要求", () => {
+  it("有 404 页面，并且它套着应用外壳（出错时不会掉进没有导航的空白页）", () => {
+    const notFoundPath = `${APP_DIR}not-found.tsx`;
+    expect(existsSync(notFoundPath)).toBe(true);
+    const source = readFileSync(notFoundPath, "utf8");
+    expect(source).toContain("AppShell");
+    expect(source).toContain('href="/"');
+  });
+
+  it("主内容区可以被跳过导航链接聚焦（否则键盘用户跳不过来）", () => {
+    const shell = readFileSync(`${APP_DIR}../components/layout/app-shell.tsx`, "utf8");
+    expect(shell).toContain('id="main"');
+    expect(shell).toContain("tabIndex={-1}");
   });
 });
 

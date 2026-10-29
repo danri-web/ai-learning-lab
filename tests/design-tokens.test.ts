@@ -91,4 +91,21 @@ describe("设计令牌", () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  /**
+   * 半透明文字会把对比度压到临界线（实测：muted-foreground/80 叠在 surface/50 上
+   * 只有 4.58:1，勉强压过 4.5 的线）。这种写法被复制一次就会静默劣化一次。
+   */
+  it("文字颜色不使用透明度修饰符（避免对比度悄悄掉到临界）", () => {
+    const offenders: string[] = [];
+    for (const dir of TOKEN_FILES) {
+      for (const file of collectSourceFiles(join(ROOT, dir))) {
+        const text = readFileSync(file, "utf8");
+        for (const match of text.matchAll(/\btext-(?:muted-)?foreground\/\d+/g)) {
+          offenders.push(`${file.replace(ROOT, "")}:${match[0]}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
 });

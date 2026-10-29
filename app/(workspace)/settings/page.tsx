@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { PageHeader } from "@/components/layout/page-header";
 
 const ROWS: readonly { label: string; value: string; note?: string }[] = [
@@ -21,6 +22,8 @@ const ROWS: readonly { label: string; value: string; note?: string }[] = [
   { label: "备份与恢复", value: "未实现", note: "阶段 7" },
   { label: "认证", value: "未实现", note: "阶段 7；在此之前不开放局域网访问" },
 ] as const;
+
+export const metadata: Metadata = { title: "设置" };
 
 export default function SettingsPage() {
   return (
