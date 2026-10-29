@@ -86,6 +86,20 @@ export function resolveArticlePath(articlesRoot: string, id: string): string {
  *   - 硬链接无法用 realpath 区分（同一份数据有两个名字），但它不能把写入"搬"到目录外，
  *     所以不在防线范围内。
  */
+/**
+ * Windows / macOS 的常见文件系统大小写不敏感：`fs.realpath()` 返回的是**规范大小写**，
+ * 而调用方传进来的可能是别的写法（`D:\DSH_WORK` vs `D:\dsh_work`）。
+ * 用大小写敏感的比较去判等，会把合法目录误判成"被链接过的目录"直接拒绝。
+ * 这是外部审计 v2 的 F1 指出的问题 —— 修好后别再改回 `!==`。
+ */
+const CASE_INSENSITIVE_FS = process.platform === "win32" || process.platform === "darwin";
+
+function samePath(a: string, b: string): boolean {
+  const left = path.resolve(a);
+  const right = path.resolve(b);
+  return CASE_INSENSITIVE_FS ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
 export async function resolveArticleFile(articlesRoot: string, id: string): Promise<string> {
   const full = resolveArticlePath(articlesRoot, id);
   const root = path.resolve(articlesRoot);
@@ -97,7 +111,7 @@ export async function resolveArticleFile(articlesRoot: string, id: string): Prom
   }
 
   const realRoot = await fs.realpath(root);
-  if (path.resolve(realRoot) !== root) {
+  if (!samePath(realRoot, root)) {
     throw new UnsafePathError(`正文目录解析后与预期不一致：${realRoot}`);
   }
 

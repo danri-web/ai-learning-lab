@@ -38,6 +38,11 @@ yarn-error.log*
 /data/
 /backups/
 
+# 笔记正文：**不进主仓库**（主仓库是公开的）。
+# 它自己是独立的私有仓库，见 docs/架构决策.md 的 D5。
+# ⚠️ 外部审计 v2 的 F2：这条规则之前只写在 ADR 里、没落到这个文件 —— 文档说"已保护"比"没保护"更危险。
+/content/articles/
+
 # vercel
 .vercel
 

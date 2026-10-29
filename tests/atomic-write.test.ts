@@ -67,6 +67,11 @@ describe("原子写入", () => {
     expect(await listTempLeftovers(dir)).toEqual([]);
   });
 
+  it("查残留时读不了目录要抛错，不能假装「没有残留」（否则断言会假绿）", async () => {
+    const notADir = path.join(dir, "not-a-dir.md");
+    await writeFileAtomic(notADir, "x");
+    await expect(listTempLeftovers(notADir)).rejects.toBeTruthy();
+  });
   it("并发写同一个文件不会互相踩，最终内容一定是其中一次的完整结果", async () => {
     const target = path.join(dir, "article-004.md");
     const payloads = Array.from({ length: 8 }, (_, index) => `内容-${index}-`.repeat(200));

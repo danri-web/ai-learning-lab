@@ -59,6 +59,14 @@ async function renameWithRetry(from: string, to: string, attempts = 6): Promise<
 
 /** 测试与维护用：列出目录里残留的临时文件（正常应为空） */
 export async function listTempLeftovers(dir: string): Promise<string[]> {
-  const entries = await fs.readdir(dir).catch(() => [] as string[]);
+  let entries: string[];
+  try {
+    entries = await fs.readdir(dir);
+  } catch (error) {
+    // 目录不存在 = 没有残留，可以当成空；
+    // 但读不了（权限、不是目录…）必须抛出去 —— 否则「查不到」会被误报成「没有」，测试假绿。
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
   return entries.filter((name) => name.endsWith(".tmp") && name.startsWith("."));
 }
