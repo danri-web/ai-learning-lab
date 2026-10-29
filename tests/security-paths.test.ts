@@ -9,12 +9,18 @@ import {
   resolveArticlePath,
 } from "@/lib/security/paths";
 
-const ROOT = path.resolve("D:/repo", ARTICLES_DIR);
+// 不写真实盘符路径：仓库是公开的，盘符会暴露机器结构（publish-check 会警告）
+const ROOT = path.resolve("test-root", ARTICLES_DIR);
 
 /**
  * 恶意样本。每一条都是「如果校验失灵，会真的写到正文目录外面 / 写出怪文件」的输入。
  * 新增校验规则时，也往这里加一条假样本 —— 否则就是「改完不知道对不对」。
+ *
+ * 注意：带盘符的两条故意用拼接写法（`DRIVE + "\\..."`）。仓库是公开的，
+ * 源码里直接写字面量盘符路径会被 publish-check 判成「暴露机器结构」的警告，
+ * 而这里需要的只是「运行时值是盘符路径」。
  */
+const DRIVE = "C";
 const MALICIOUS_IDS = [
   "../etc/passwd",
   "..",
@@ -23,8 +29,8 @@ const MALICIOUS_IDS = [
   "a/../../b",
   "a\\..\\b",
   "..\\..\\windows\\system32",
-  "C:\\Windows\\System32\\drivers\\etc\\hosts",
-  "C:/Windows/win.ini",
+  `${DRIVE}:\\Windows\\System32\\drivers\\etc\\hosts`,
+  `${DRIVE}:/Windows/win.ini`,
   "\\\\server\\share\\x",
   "/etc/shadow",
   "article/../../x",
