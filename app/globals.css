@@ -7,9 +7,15 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist-sans), "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-heading: var(--font-sans);
+  /* 设计令牌里 shadcn 没有的两档（见 docs/需求书.md §6） */
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-success: var(--success);
+  --color-danger: var(--destructive);
+  --color-warning: var(--warning);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -48,73 +54,70 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
+/* ============================================================
+   设计令牌 —— 唯一来源：docs/需求书.md §6「设计令牌（初始建议）」
+   深色是 MVP 唯一主题，所以直接写在 :root，不提供浅色版本。
+   组件里不许硬编码颜色，只用这些变量（含 Tailwind 语义类）。
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+   Background  #0B0D12   Surface   #12151C   Elevated  #191D26
+   Border      #292E39   Text      #F1F3F7   Muted     #9299A8
+   Accent      #8B82F6   Success   #48B58A   Warning   #E5AC62
+   Danger      #E06C75
+   ============================================================ */
+
+:root {
+  /* Background / Surface / Elevated */
+  --background: #0b0d12;
+  --surface: #12151c;
+  --elevated: #191d26;
+
+  /* 文字 */
+  --foreground: #f1f3f7;
+  --muted-foreground: #9299a8;
+
+  /* 边框与聚焦 */
+  --border: #292e39;
+  --input: #292e39;
+  --ring: #8b82f6;
+
+  /* 强调色（README 里的 Accent），深色文字压在上面 */
+  --primary: #8b82f6;
+  --primary-foreground: #0b0d12;
+
+  /* 语义色 */
+  --success: #48b58a;
+  --warning: #e5ac62;
+  --destructive: #e06c75;
+
+  /* shadcn 语义槽位 → 落到上面的三档底色与文字色 */
+  --card: #12151c;
+  --card-foreground: #f1f3f7;
+  --popover: #191d26;
+  --popover-foreground: #f1f3f7;
+  --secondary: #191d26;
+  --secondary-foreground: #f1f3f7;
+  --muted: #191d26;
+  --accent: #191d26;
+  --accent-foreground: #f1f3f7;
+
+  /* 侧栏 */
+  --sidebar: #12151c;
+  --sidebar-foreground: #f1f3f7;
+  --sidebar-primary: #8b82f6;
+  --sidebar-primary-foreground: #0b0d12;
+  --sidebar-accent: #191d26;
+  --sidebar-accent-foreground: #f1f3f7;
+  --sidebar-border: #292e39;
+  --sidebar-ring: #8b82f6;
+
+  /* 图表（阶段 6 统计面板会用） */
+  --chart-1: #8b82f6;
+  --chart-2: #48b58a;
+  --chart-3: #e5ac62;
+  --chart-4: #e06c75;
+  --chart-5: #9299a8;
+
+  --radius: 0.5rem;
 }
 
 @layer base {
@@ -126,5 +129,10 @@
   }
   html {
     @apply font-sans;
+    color-scheme: dark;
+  }
+  /* 键盘焦点在任何地方都必须看得见（README §6 可访问性） */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
   }
 }
