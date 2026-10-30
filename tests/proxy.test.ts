@@ -120,8 +120,13 @@ describe("局域网模式", () => {
   it("篡改的 cookie 不放行", async () => {
     lanMode();
     const token = await signSession(SECRET);
-    const last = token.slice(-1);
-    const tampered = `${token.slice(0, -1)}${last === "x" ? "y" : "x"}`;
+    // 不能改最后一个 base64url 字符：43 个字符里只有前 4 位是有效数据，最后 2 位是填充，
+    // 改末尾有时会解码出完全相同的签名字节（这条断言曾因此偶发通过）。
+    // 改签名中间的一个字符，保证 6 位全部有效、解码后的字节一定不同。
+    const [version, payload, signature] = token.split(".");
+    const index = Math.floor(signature.length / 2);
+    const replacement = signature[index] === "A" ? "B" : "A";
+    const tampered = `${version}.${payload}.${signature.slice(0, index)}${replacement}${signature.slice(index + 1)}`;
     const response = await proxy(
       request("/knowledge", { headers: { cookie: `${SESSION_COOKIE}=${tampered}` } }),
     );

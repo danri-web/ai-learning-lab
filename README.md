@@ -113,9 +113,12 @@ npm run lint         # ESLint 9
 npm run typecheck    # next typegen && tsc --noEmit
 npm run test         # Vitest
 npm run test:watch   # Vitest 监听
+npm run verify       # 四条一起：typecheck → lint → test → build
 npm run format       # Prettier 写入
 npm run format:check # Prettier 只检查
 ```
+
+`npm run verify` 是交付前的一条命令闸门：四步任一失败就停下；它不跑 `publish-check`（那是工作区脚本，见交接 §5）。
 
 端到端测试（Playwright）尚未提供，按需求书放在阶段 8 —— 所以这里没有 `test:e2e` 脚本，避免出现「看起来有、跑就报错」的假入口。
 
