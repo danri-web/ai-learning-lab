@@ -2,7 +2,6 @@ import matter from "gray-matter";
 import { z } from "zod";
 
 import { normalizeArticleBody } from "@/lib/content/body-text";
-import { stripBom } from "@/lib/content/encoding";
 import { ARTICLE_ID_MESSAGE, ARTICLE_ID_REGEX_SOURCE } from "@/lib/security/article-id";
 
 /**
@@ -30,13 +29,26 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const SAFE_OPENING = /^---[ \t]*(?:(?:yaml|yml|json)[ \t]*)?(?:\r?\n|$)/i;
 
 /**
+ * 把所有前导 BOM 都去掉（不是只去一个）。
+ *
+ * v3b 复核抓到的绕过：`stripBom` 只剥一层；`\uFEFF\uFEFF---js` 在剥一层后仍以 BOM 开头，
+ * 于是 `startsWith("---")` 为假、校验被跳过；gray-matter 自己再剥一层，正好看到 `---js`。
+ * 这里必须把「校验看到的前缀」和「解析器看到的前缀」统一成同一个。
+ */
+function stripLeadingBoms(text: string): string {
+  let out = text;
+  while (out.charCodeAt(0) === 0xfeff) out = out.slice(1);
+  return out;
+}
+
+/**
  * 把开头规范成纯 `---`，交给 gray-matter 之前先把「语言」抹掉：
  * 解析器没有任何引擎可选，`javascript` / `js` 再也没有被选中的机会。
  *
  * 没有 frontmatter 的文件原样返回（gray-matter 只在开头是分隔符时才做语言检测）。
  */
 function normalizeFrontmatterSource(source: string): string {
-  const text = stripBom(source);
+  const text = stripLeadingBoms(source);
   if (!text.startsWith("---")) return text;
 
   const opening = SAFE_OPENING.exec(text);

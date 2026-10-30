@@ -13,10 +13,11 @@ import {
 } from "@/lib/content/backup-store";
 import { isBackupFileName, type RestorePlan } from "@/lib/content/backup-format";
 import { countByKind } from "@/lib/content/backup-validate";
-import { clearRestoreJournal, restoreJournalPath } from "@/lib/content/restore-journal";
+import { restoreJournalPath } from "@/lib/content/restore-journal";
 import { startupRecovery } from "@/lib/content/restore-startup";
 import {
   applyRestore,
+  discardPendingRestore,
   recoverPendingRestore,
   type RestoreFailure,
   type RestoreRecovery,
@@ -114,7 +115,11 @@ async function recoverOnce(): Promise<void> {
           return;
         }
 
-        recoveryNotice = describeRecovery(await recoverPendingRestore({}));
+        const result = await recoverPendingRestore({});
+        recoveryNotice = describeRecovery(result);
+        // 返回 failed 时允许下一次请求重试：用户可能刚把快照放回 backups/，
+        // 刷新页面就应该重新收尾（v3b 复核：原来缓存住失败，刷新不会重试）。
+        if (result.state === "failed") recoveryOnce = null;
       } catch (error) {
         // 读日志/回滚本身抛异常（不是「返回失败」）：保留提示，允许下次请求再试一次
         recoveryOnce = null;
@@ -229,11 +234,14 @@ export async function applyRestoreFromForm(input: {
  * 只在「自动回滚失败 / 日志读不出来」时需要：快照找不回来时，按正常流程永远收不了尾，
  * 写入闸门会一直挡着。这里让用户显式确认后删掉日志，接受当前 content/ 的状态。
  * 删除本身失败就如实报错 —— 不要假装放弃成功。
+ *
+ * 走 `discardPendingRestore()`：它和恢复共用 `serialize`，不会在恢复进行到一半时插队删日志
+ * （v3b 复核指出旧实现没有排队）。
  */
 export async function discardRestoreJournal(): Promise<{ ok: true } | BackupServiceFailure> {
   await requireAuth();
   const backupsDir = backupsRoot();
-  const cleared = await clearRestoreJournal(backupsDir);
+  const cleared = await discardPendingRestore(backupsDir);
   if (!cleared.ok) {
     return fail(
       `删不掉恢复日志（${cleared.error}）。请手动删除 ${restoreJournalPath(backupsDir)} 后再试。`,

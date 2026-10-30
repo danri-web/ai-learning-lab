@@ -83,12 +83,24 @@ export function parseRestoreJournal(
   };
 }
 
-/** 读日志：不存在 = 没有待收尾的恢复（不是错误）；存在但读不出来 = 解析错误 */
+/** 读日志：确认不存在 = 没有待收尾的恢复；其它查询失败 = 错误（不能当成“没有”） */
 export async function readRestoreJournal(backupsDir: string): Promise<RestoreJournalRead> {
   const file = restoreJournalPath(backupsDir);
 
-  const stat = await fs.lstat(/*turbopackIgnore: true*/ file).catch(() => null);
-  if (!stat) return { ok: true, journal: null };
+  // 只有 ENOENT 能证明“日志不存在”。EACCES / EIO / ENOTDIR 这些是“查不了”，
+  // 当成没有日志会让写入闸门放行，等访问恢复后旧日志又把新编辑回滚掉（v3b 复核 P2）。
+  let stat: Awaited<ReturnType<typeof fs.lstat>>;
+  try {
+    stat = await fs.lstat(/*turbopackIgnore: true*/ file);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { ok: true, journal: null };
+    }
+    return {
+      ok: false,
+      error: `查不了恢复日志（${file}）：${message(error)}`,
+    };
+  }
   if (stat.isSymbolicLink() || !stat.isFile()) {
     return { ok: false, error: `恢复日志不是普通文件（可能是链接/目录）：${file}` };
   }

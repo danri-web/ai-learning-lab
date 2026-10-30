@@ -155,6 +155,19 @@ describe("frontmatter 守卫不能被 Unicode 空白绕过（V2-SEC-01）", () =
     expect(marker()).toBe(0);
   });
 
+  it("两个前导 BOM 也不能绕过（v3b 复核）", () => {
+    const result = parseArticle(`\uFEFF\uFEFF${jsPayload("", "trailing")}`, "hello");
+    expect(result.ok).toBe(false);
+    expect(marker()).toBe(0);
+  });
+
+  it("两个前导 BOM + 没有换行：检测器截断也不能拿到 javascript", () => {
+    const payload = `\uFEFF\uFEFF---javascriptX\n(globalThis.__aiLabFrontmatterMarker = 9, { ${FIELDS} })\n---\n正文`;
+    const result = parseArticle(payload, "hello");
+    expect(result.ok).toBe(false);
+    expect(marker()).toBe(0);
+  });
+
   it("readFrontmatter（保存旧笔记）同样拒绝且不执行", () => {
     expect(() => readFrontmatter(jsPayload("\u00a0", "trailing"))).toThrow();
     expect(marker()).toBe(0);

@@ -10,13 +10,13 @@ npm ci
 npm run audit:probes
 ```
 
-输出 30 行 `PASS/FAIL` + 最后一行 `结果：30/30 PASS`，退出码 0 表示全过。
+输出 32 行 `PASS/FAIL` + 最后一行 `结果：32/32 PASS`，退出码 0 表示全过。
 
 ## 覆盖什么
 
 | 组 | 样例 |
 |---|---|
-| frontmatter 开头 | 六种 Unicode 空白（NBSP / EM SPACE / 窄 NBSP / 全角空格 / BOM / 垂直制表符）× 前置/后置、文件头 BOM、`---js`、`!!js/function` |
+| frontmatter 开头 | 六种 Unicode 空白（NBSP / EM SPACE / 窄 NBSP / 全角空格 / BOM / 垂直制表符）× 前置/后置、文件头 BOM、**两个前导 BOM**（含无换行的 `---javascriptX`）、`---js`、`!!js/function` |
 | 三个入口 | `parseArticle`（读/搜索）、`readFrontmatter`（保存旧笔记）、`checkBackupPayload`（恢复预览） |
 | 数据格式 | 普通 YAML、`---json`、正文对象序列化 |
 | 写入闸门 | 无日志 / `applying` / `verified` / 坏日志 / `verified` 不回滚 |

@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 /**
  * 外部复核用的探针套件（不属于 `npm run verify` 的交付门槛）。
  * 单独一份 config，因为主套件只收 `tests/**` 下的 `*.test.ts`；
- * 探针用 `.probe.ts`，不改变 519 条断言的计数。
+ * 探针用 `.probe.ts`，不改变 531 条断言的计数。
  */
 export default defineConfig({
   resolve: {

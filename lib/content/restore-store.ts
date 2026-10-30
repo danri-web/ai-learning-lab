@@ -522,6 +522,18 @@ export function recoverPendingRestore(
   return serialize(() => recoverPendingRestoreUnlocked(options));
 }
 
+/**
+ * 放弃恢复日志（v3b 复核：必须和恢复走同一把锁）。
+ *
+ * 如果恢复正在跑，这里会排在它后面；否则「放弃」可能删掉一份正在被读取/回滚的日志。
+ * 删除失败如实返回，不假装成功。
+ */
+export function discardPendingRestore(
+  backupsDir: string = backupsRoot(),
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return serialize(() => clearRestoreJournal(backupsDir));
+}
+
 /** 给界面显示的统计（失败时也能拿到计划） */
 export function planCounts(plan: RestorePlan): RestoreCounts {
   return plan.counts;

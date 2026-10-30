@@ -2,7 +2,7 @@
 
 一个本地优先的 AI 学习、知识管理与资源收藏工作台。
 
-**当前状态：阶段 1–8 开发完成（2026-10-30）；外部验收审计 v1/v2 判定 NOT ACCEPTED（架构偏离 + SEC-01），SEC-01 的 Unicode 空白绕过与 DATA-01 的启动收尾已在 v2 审计后修完。** 笔记能新建/编辑/删除（中文标题直接当文件名）；资源收藏能增删改、按类型/分类/标签筛选、三种排序，并能挂到某篇笔记上。链接只接受 http/https，应用**从不抓取**你填的地址。`Ctrl+K` 能搜全部笔记与资源：分组、摘要、高亮、`↑↓`/`Enter`/`Esc` 键盘操作，**不建索引**（每次搜都读文件，所以永远不会有"索引过期"）。学习任务有 Todo / 进行中 / 已完成三档、截止日期（会算逾期）、可关联多篇笔记与多条资源；总览页的数字全部从文件现算。阶段 7 把 `content/` 打成带清单的 zip（每个文件 sha256），恢复前先预览、先留快照、失败自动回滚；之后又补了**恢复日志**：恢复写到一半被强杀，**下次启动**会自动回到恢复前，收尾前写入会被暂停（DATA-01 / D18）。局域网默认关闭，打开后用口令登录，所有页面与写入都要过同一道门。阶段 8 补上了 Playwright 端到端测试（系统 Chrome；Windows 桌面 + Pixel 7 模拟）、axe 可访问性扫描（WCAG 2 A/AA，九个界面 0 命中）、性能基线、备份恢复的完整 E2E，以及 `app/error.tsx` 错误边界。**交付门槛是 `npm run verify`（519 条断言）加 `npm run test:e2e`。**
+**当前状态：阶段 1–8 开发完成（2026-10-30）；外部验收审计 v1/v2 与复核 v3b 的判定都是 NOT ACCEPTED，给出的具体缺陷已按复现修完（Unicode/重复 BOM 绕过、延迟恢复、日志查询失败）。** 笔记能新建/编辑/删除（中文标题直接当文件名）；资源收藏能增删改、按类型/分类/标签筛选、三种排序，并能挂到某篇笔记上。链接只接受 http/https，应用**从不抓取**你填的地址。`Ctrl+K` 能搜全部笔记与资源：分组、摘要、高亮、`↑↓`/`Enter`/`Esc` 键盘操作，**不建索引**（每次搜都读文件，所以永远不会有"索引过期"）。学习任务有 Todo / 进行中 / 已完成三档、截止日期（会算逾期）、可关联多篇笔记与多条资源；总览页的数字全部从文件现算。阶段 7 把 `content/` 打成带清单的 zip（每个文件 sha256），恢复前先预览、先留快照、失败自动回滚；之后又补了**恢复日志**：恢复写到一半被强杀，**下次启动**会自动回到恢复前，收尾前写入会被暂停（DATA-01 / D18）。局域网默认关闭，打开后用口令登录，所有页面与写入都要过同一道门。阶段 8 补上了 Playwright 端到端测试（系统 Chrome；Windows 桌面 + Pixel 7 模拟）、axe 可访问性扫描（WCAG 2 A/AA，九个界面 0 命中）、性能基线、备份恢复的完整 E2E，以及 `app/error.tsx` 错误边界。**交付门槛是 `npm run verify`（519 条断言）加 `npm run test:e2e`。**
 
 ![总览](docs/screenshot-dashboard.png)
 
@@ -144,9 +144,9 @@ npm run format:check # Prettier 只检查
 
 ## 测试与发布（阶段 8）
 
-交付门槛是两条命令：`npm run verify`（**519 条断言：518 通过 + 1 跳过**，跳过的是本机建不出的文件级符号链接）和 `npm run test:e2e`（Playwright）。端到端**不在 `verify` 里**：它要起服务、会改测试数据、单轮约 2.5 分钟，塞进每次提交会让人开始跳过闸门。
+交付门槛是两条命令：`npm run verify`（**531 条断言：530 通过 + 1 跳过**，跳过的是本机建不出的文件级符号链接）和 `npm run test:e2e`（Playwright）。端到端**不在 `verify` 里**：它要起服务、会改测试数据、单轮约 2.5 分钟，塞进每次提交会让人开始跳过闸门。
 
-另有一条**外部复核用的只读探针**（不属于交付门槛，也不计入 519）：`npm run audit:probes`。30 个样例覆盖 frontmatter 六种 Unicode 空白 × 前置/后置、读/保存/恢复预览三个入口、写入闸门与恢复状态机；输出一页 `PASS/FAIL`，只读、不联网、跑完自动清临时目录。详见 [`scripts/audit/README.md`](scripts/audit/README.md)。
+另有一条**外部复核用的只读探针**（不属于交付门槛，也不计入 531）：`npm run audit:probes`。32 个样例覆盖 frontmatter 的 Unicode 空白与重复 BOM、读/保存/恢复预览三个入口、写入闸门与恢复状态机；输出一页 `PASS/FAIL`，只读、不联网、跑完自动清临时目录。详见 [`scripts/audit/README.md`](scripts/audit/README.md)。
 
 ### 端到端测试怎么隔离数据
 
@@ -244,7 +244,7 @@ proxy.ts           每个请求的第一道门（局域网认证 / 本机绑定 
 scripts/           auth-lib / set-password / start-lan / env-file / e2e-server（隔离副本）
 e2e/               Playwright 用例、共享断言、fixtures（假笔记/资源/任务，不进 content/）
 playwright.config.ts  两个 project（Windows Chrome / Pixel 7）+ 自动起隔离服务
-tests/             Vitest 单元测试（519 条，其中 1 条在本机会 skipped）
+tests/             Vitest 单元测试（531 条，其中 1 条在本机会 skipped）
 docs/              需求书、架构决策、操作指南、截图
 backups/           备份 zip（gitignored；明文，别放公开同步盘）
 public/            静态资源
@@ -448,7 +448,7 @@ public/            静态资源
   `git clone（HEAD）→ npm ci（771 包，约 1 分钟）→ 放手机测试备份 zip → build → start →`
   `/backup 预览（新增 7 / 覆盖 0）→ 执行恢复 → 2 篇笔记 + 资源 + 任务都回来`；
   干净副本里再跑一遍 Vitest 也全过
-- **断言**：444 → **465**（464 通过 + 1 skipped）。新增 `tests/error-boundary.test.ts` 3 条、`tests/e2e-safety.test.ts` 13 条 + `tests/e2e-lock.test.ts` 5 条；E2E 单独一条命令，不进 `verify`。**2026-10-30 外部验收审计后又补了 54 条**（frontmatter 执行 5 + 登录体/限速 7 + TOC 3 + DATA-01 恢复日志 17 + v2 审计的 Unicode 空白与写入闸门 22），当前 **519**（518 + 1 skipped）
+- **断言**：444 → **465**（464 通过 + 1 skipped）。新增 `tests/error-boundary.test.ts` 3 条、`tests/e2e-safety.test.ts` 13 条 + `tests/e2e-lock.test.ts` 5 条；E2E 单独一条命令，不进 `verify`。**2026-10-30 外部验收审计 + 复核后共补了 66 条**（frontmatter 执行 5 + 登录体/限速 7 + TOC 3 + DATA-01 恢复日志 17 + v2 审计的 Unicode 空白与写入闸门 22 + v3b 复核的重复 BOM/查询失败/重试/排队 12），当前 **531**（530 + 1 skipped）
 - **实测踩到的坑**：① Turbopack 以最近的 lockfile 当工作区根，**不接受指向工作区外的 node_modules 目录联接**（`Could not find the Next.js package`）→ 改成 robocopy 真实复制；② React 19 在 form action 后 reset 表单，`<select>`/radio 的 value 没变时不会写回 DOM → 校验失败后控件看起来被清空（已修 + E2E 回归）；③ Next 的路由播报器也是 `role="alert"`，E2E 取 alert 必须收窄；④ 404 页的主文档本身会记一条 console error，不能和"脚本报错"混在一起断言；⑤ Pixel 7 设备档 + 系统 Chrome 要用 `channel: "chrome"`，否则会去找没下载的 Chromium
 
 ### 外部验收审计（GPT，2026-10-30）：High 为真，已修；架构偏离待拍板
@@ -465,13 +465,13 @@ public/            静态资源
 | **QA-03**：移动端没有目录 | 真 | 笔记详情窄屏加可折叠目录 |
 | **DATA-01**：恢复不是崩溃原子 | 真限制 | **已修**：`backups/restore-journal.json`（`applying` / `verified`）+ **进程启动时**自动收尾（v2 审计后从「打开备份页才收尾」提前）；未收尾时写入闸门挡住所有正常写入；坏日志 / 缺快照 fail closed，可在 `/backup` 放弃日志；17 条恢复 + 5 条闸门测试（ADR **D17/D18**）。仍不是目录级原子 |
 | **REQ-01**：SQLite/Drizzle/migrations/FTS5/Shiki/文件名 id 与最初需求书不符 | 真（对最初需求书） | **已按 A 正式变更**：`docs/需求变更-2026-10-30.md`；安全与功能验收不放宽 |
-| 测试 NOT TESTED | 审计方环境 `npm ci` EPERM | 不是应用失败；本项目实测 `verify` 519 条 + E2E 13/7 全绿。独立验收仍需能装依赖的机器 |
+| 测试 NOT TESTED | 审计方环境 `npm ci` EPERM | 不是应用失败；本项目实测 `verify` 531 条 + E2E 13/7 全绿。独立验收仍需能装依赖的机器 |
 
 > **外部验收审计 v2（2026-10-30 晚）**：架构简化被接受，但安全判定仍 NOT ACCEPTED，给了两个具体缺陷：
 > ① `---javascript\u00a0` 这类 Unicode 空白绕过 frontmatter 守卫，payload 在真实的
 > `parseArticle` / `readFrontmatter` / `checkBackupPayload` 里执行（High）；
 > ② 延迟恢复会覆盖重启后先做的编辑（Medium）。两条都已按复现修完，见下方「v2 审计修复」与 ADR **D18**。
-> 新验收包 `output/ai-lab-acceptance-2026-10-30-v3b`（含 `npm run audit:probes` 的 30/30 日志）；旧包 `ddf54bc`（含 SEC-01）与 v2 包（含空白绕过）
+> 新验收包 `output/ai-lab-acceptance-2026-10-30-v3c`（含 `npm run audit:probes` 的 32/32 日志）；旧包 `ddf54bc`（含 SEC-01）与 v2 包（含空白绕过）、v3/v3b 都被 v3c 取代
 > 都不要继续分发。
 
 ### v2 审计修复：Unicode 空白 frontmatter + 启动即收尾（2026-10-30）
@@ -491,6 +491,22 @@ public/            静态资源
   混合内容原样保留（证明 build 不回滚）；再 `npm run start` —— **端口刚监听、还没发任何 HTTP 请求时**
   日志已删、重启后新建的笔记已移进 `.trash/restore-rollback-*`、被改的笔记回到快照字节。
   缺快照的日志启动后 `/backup` 显示「自动回滚也失败」+ 快照名，日志保留、放弃入口出现。
+
+### v3b 复核修复：重复 BOM、日志查询失败、重试与排队（2026-10-30）
+
+复核者对 v3b 的判定是 **P1 REJECT / P2 REJECT on an I/O-error path**（正常恢复序列认可）。三条缝都先复现再修：
+
+- **两个前导 BOM 会绕过开头校验**：`stripBom` 只剥一层，剩下的一层让 `startsWith("---")` 为假；
+  gray-matter 自己再剥一层，正好看到 `---js`。现在 frontmatter 入口**剥掉所有前导 BOM 再校验**，
+  匹配后照旧把语言标记抹掉（`tests/frontmatter-security.test.ts` 增至 24 条，含双 BOM 与无换行）。
+- **日志查询失败被当成“没有日志”**：`lstat` 的 EACCES/EIO 原来返回 `journal: null`，写入闸门会放行。
+  现在只有 **ENOENT** 算“没有”，其它错误一律 fail closed（`tests/restore-lookup-failure.test.ts` 4 条，
+  注入 EACCES/EIO/ENOENT）。
+- **失败被缓存、放弃不排队**：恢复返回 `failed` 时清掉单次守卫，刷新会重试；放弃日志改走
+  `discardPendingRestore()`（与恢复共用 `serialize`），不会插队（`tests/restore-discard.test.ts` 2 条）。
+- **服务层写入真的被挡住**：`tests/service-write-gate.test.ts` 4 条 mock 写入层，证明闸门拦截时
+  写入函数一次都没被调用，放行时才调用 —— 不再只断言“消息长什么样”。
+- 探针增至 **32 个**（新增双 BOM 两例），仍不计入 531 条断言。
 
 ### DATA-01 修复：恢复日志 + 启动自动回滚（2026-10-30）
 
