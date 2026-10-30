@@ -463,7 +463,7 @@ public/            静态资源
 | **QA-03**：移动端没有目录 | 真 | 笔记详情窄屏加可折叠目录 |
 | **DATA-01**：恢复不是崩溃原子 | 真限制 | **已修**：`backups/restore-journal.json`（`applying` / `verified`）+ 每进程首次访问 `/backup`、`/settings` 或执行恢复时自动收尾；坏日志 / 缺快照一律 fail closed；17 条测试（ADR **D17**）。仍不是目录级原子 |
 | **REQ-01**：SQLite/Drizzle/migrations/FTS5/Shiki/文件名 id 与最初需求书不符 | 真（对最初需求书） | **已按 A 正式变更**：`docs/需求变更-2026-10-30.md`；安全与功能验收不放宽 |
-| 测试 NOT TESTED | 审计方环境 `npm ci` EPERM | 不是应用失败；本项目实测 `verify` 480 条 + E2E 13/7 全绿。独立验收仍需能装依赖的机器 |
+| 测试 NOT TESTED | 审计方环境 `npm ci` EPERM | 不是应用失败；本项目实测 `verify` 497 条 + E2E 13/7 全绿。独立验收仍需能装依赖的机器 |
 
 > 旧验收包（`output/ai-lab-acceptance-2026-10-30`，源码 `ddf54bc`）包含 SEC-01，**不要继续分发**。
 > 已重打 `output/ai-lab-acceptance-2026-10-30-v2`（含 SEC-01/02/03、QA-01/02/03、DATA-01 的修复；
