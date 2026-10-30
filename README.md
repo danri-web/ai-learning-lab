@@ -29,6 +29,8 @@
 ![错误边界](docs/screenshot-error-boundary.png)
 
 > 完整需求、验收标准与八阶段路线在 **[docs/需求书.md](docs/需求书.md)**（原始需求书，内容保持原样）。
+>
+> 日常操作看两份短指南：**[管理员操作指南](docs/管理员操作指南.md)**（安装/启动/备份/恢复/手机访问）· **[用户操作指南](docs/用户操作指南.md)**（写笔记/搜索/资源/任务）。
 
 ## 写笔记（两种方式都行）
 
@@ -240,7 +242,7 @@ scripts/           auth-lib / set-password / start-lan / env-file / e2e-server�
 e2e/               Playwright 用例、共享断言、fixtures（假笔记/资源/任务，不进 content/）
 playwright.config.ts  两个 project（Windows Chrome / Pixel 7）+ 自动起隔离服务
 tests/             Vitest 单元测试（465 条，其中 1 条在本机会 skipped）
-docs/              需求书、架构决策、截图
+docs/              需求书、架构决策、操作指南、截图
 backups/           备份 zip（gitignored；明文，别放公开同步盘）
 public/            静态资源
 ```
