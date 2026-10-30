@@ -1,6 +1,7 @@
 "use client";
 
 import { Menu, Plus, Search } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -15,9 +16,10 @@ import { Brand } from "./brand";
 import { SidebarNav } from "./sidebar-nav";
 
 /**
- * 顶栏。阶段 2 只做骨架：
+ * 顶栏：
  * - 手机端的导航抽屉（可 Esc 关闭、焦点被 Sheet 管住）
- * - 搜索与新建是**禁用**的占位，按钮上写清哪个阶段启用，不做假功能
+ * - 搜索仍是**禁用**的占位（阶段 5），按钮上写清哪个阶段启用，不做假功能
+ * - 「新建笔记」在阶段 3b 接上了真页面
  */
 export function TopBar() {
   const [navOpen, setNavOpen] = useState(false);
@@ -68,15 +70,12 @@ export function TopBar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2 md:ml-0">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled
-          title="阶段 3 启用：新建笔记"
-          className="gap-1.5"
-        >
-          <Plus aria-hidden />
-          <span className="hidden sm:inline">新建笔记</span>
+        <Button asChild variant="outline" size="sm" className="gap-1.5">
+          <Link href="/knowledge/new">
+            <Plus aria-hidden />
+            <span className="hidden sm:inline">新建笔记</span>
+            <span className="sr-only sm:hidden">新建笔记</span>
+          </Link>
         </Button>
       </div>
     </header>

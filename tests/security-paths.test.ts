@@ -19,6 +19,10 @@ const ROOT = path.resolve("test-root", ARTICLES_DIR);
  * 注意：带盘符的两条故意用拼接写法（`DRIVE + "\\..."`）。仓库是公开的，
  * 源码里直接写字面量盘符路径会被 publish-check 判成「暴露机器结构」的警告，
  * 而这里需要的只是「运行时值是盘符路径」。
+ *
+ * 2026-10-30（ADR D7 允许中文文件名）之后，白名单从「纯 ASCII」放宽到「字母/数字/连字符/下划线」，
+ * 所以 `ARTICLE`、`article_001`、全角英文这几种**现在是合法的**（它们只是不好看，跑不出去）。
+ * 放宽的是字符集，不是结构 —— 下面每一条绕过手段依然必须被拒。
  */
 const DRIVE = "C";
 const MALICIOUS_IDS = [
@@ -38,8 +42,6 @@ const MALICIOUS_IDS = [
   "x\ny",
   " article",
   "article ",
-  "ARTICLE",
-  "article_001",
   "con",
   "nul",
   "com1",
@@ -47,12 +49,30 @@ const MALICIOUS_IDS = [
   "",
   "x".repeat(65),
   "．",
-  "ａｒｔｉｃｌｅ",
+  // ↓ 中文/Unicode 加入白名单后新增的绕过尝试
+  "中文/子目录", // 子目录
+  "a\uFF0Fb", // 全角斜杠
+  "a\u200Bb", // 零宽空格：看不见，但会让文件名不是你以为的那个
+  "a\u202Eb", // RTL override：文件名显示顺序会被翻转
+  "note.", // 结尾点：Windows 会悄悄吃掉，变成另一个名字
+  "_note", // 下划线开头：列表页会把它当草稿跳过，等于"写进去但看不见"
+  "注 意", // 空格
+  "new", // 与 /knowledge/new 路由冲突，笔记会永远打不开
 ];
 
 describe("文章 id 白名单", () => {
-  it("正常 id 通过", () => {
-    for (const id of ["article-001", "a", "transformer-basics", "x1", "x".repeat(64)]) {
+  it("正常 id 通过（ASCII 与中文都行）", () => {
+    for (const id of [
+      "article-001",
+      "a",
+      "transformer-basics",
+      "x1",
+      "x".repeat(64),
+      "注意力机制",
+      "GPT-4-与-Claude-对比",
+      "中文_笔记",
+      "note-20261030-ab12",
+    ]) {
       expect(isSafeArticleId(id), id).toBe(true);
     }
   });
@@ -87,7 +107,7 @@ describe("解析出来的路径", () => {
   });
 
   it("id 与文件名互为逆运算（读目录时拿到的 id 一定合法）", () => {
-    for (const id of ["article-001", "transformer-basics", "x".repeat(64)]) {
+    for (const id of ["article-001", "transformer-basics", "x".repeat(64), "中文笔记"]) {
       const full = resolveArticlePath(ROOT, id);
       expect(articleIdFromPath(full)).toBe(id);
     }

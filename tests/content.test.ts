@@ -67,14 +67,16 @@ describe("正文目录路径", () => {
   });
 });
 describe("列目录", () => {
-  it("读出正常笔记，异常文件单独报出来，下划线开头的被跳过", async () => {
+  it("读出正常笔记（含中文文件名），异常文件单独报出来，下划线开头的被跳过", async () => {
     const { articles, problems, missingRoot } = await listArticles(FIXTURES);
 
     expect(missingRoot).toBe(false);
-    expect(articles.map((item) => item.id).sort()).toEqual(["ragging", "transformer-basics"]);
-    // 三个问题文件：缺分类 / id 不一致 / 中文文件名
+    expect(articles.map((item) => item.id).sort()).toEqual(
+      ["ragging", "transformer-basics", "中文笔记"].sort(),
+    );
+    // 两个问题文件：缺分类 / frontmatter 的 id 与文件名不一致
     expect(problems.map((item) => item.file).sort()).toEqual(
-      ["id-mismatch.md", "missing-category.md", "中文笔记.md"].sort(),
+      ["id-mismatch.md", "missing-category.md"].sort(),
     );
     // 下划线开头的不在任何一边
     expect(articles.some((item) => item.id.includes("draft"))).toBe(false);
@@ -83,7 +85,7 @@ describe("列目录", () => {
 
   it("按 updatedAt 倒序排（最新的在最前）", async () => {
     const { articles } = await listArticles(FIXTURES);
-    expect(articles.map((item) => item.id)).toEqual(["ragging", "transformer-basics"]);
+    expect(articles.map((item) => item.id)).toEqual(["ragging", "transformer-basics", "中文笔记"]);
   });
 
   it("目录不存在时返回 missingRoot，而不是抛错", async () => {

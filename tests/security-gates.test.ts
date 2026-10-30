@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { ARTICLES_DIR } from "@/lib/security/paths";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
-const SOURCE_DIRS = ["app", "components", "lib"];
+const SOURCE_DIRS = ["app", "components", "lib", "features"];
 const EXT = /\.(ts|tsx)$/;
 
 /**
@@ -48,6 +48,14 @@ const RULES: Rule[] = [
     name: "禁止绕过原子写入（写函数名直接调用）",
     pattern: /\b(writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream)\s*\(/,
     allow: ["lib/fs/atomic-write.ts"],
+  },
+  {
+    // docs/架构决策.md D4：写入链路是「Server Action → service → lib/content/write」。
+    // 页面（app/ 下）如果直接 import 写入模块，就等于跳过了 service 的字段校验，
+    // 所以这里把"谁能 import 写入模块"钉死成唯一一个文件。
+    name: "只有 service 能 import 写入模块（页面不许直接写文件）",
+    pattern: /from\s+["']@\/lib\/content\/write["']/,
+    allow: ["features/articles/service.ts"],
   },
 ];
 
@@ -127,6 +135,14 @@ describe("源码闸门（功能未实现也先锁住）", () => {
       {
         fixture: { path: "lib/fake6.ts", text: "await fs.writeFile(p, data);" },
         target: "绕过原子写入",
+      },
+      {
+        // D4 的写入链路：页面绕过 service 直接调写入模块
+        fixture: {
+          path: "app/(workspace)/knowledge/actions.ts",
+          text: 'import { createArticle } from "@/lib/content/write";',
+        },
+        target: "只有 service",
       },
     ];
 

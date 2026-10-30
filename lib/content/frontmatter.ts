@@ -1,6 +1,8 @@
 import matter from "gray-matter";
 import { z } from "zod";
 
+import { ARTICLE_ID_MESSAGE, ARTICLE_ID_REGEX_SOURCE } from "@/lib/security/article-id";
+
 /**
  * frontmatter 的唯一真相 + 唯一校验入口。
  *
@@ -13,13 +15,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export const articleFrontmatterSchema = z
   .object({
-    // 与 lib/security/paths.ts 的 id 白名单保持一致：它同时是文件名
-    id: z
-      .string()
-      .regex(
-        /^[a-z0-9][a-z0-9-]{0,63}$/,
-        "id 只能是小写字母/数字/连字符，1–64 位，且不以连字符开头",
-      ),
+    // 与 lib/security/article-id.ts 共用同一份规则：id 同时是文件名（D3/D7），
+    // 中文标题现在可以直接当文件名，但仍然不许出现点号/分隔符/保留名。
+    id: z.string().regex(new RegExp(ARTICLE_ID_REGEX_SOURCE, "u"), ARTICLE_ID_MESSAGE),
     title: z.string().trim().min(1, "标题不能为空").max(200, "标题最长 200 字"),
     category: z.string().trim().min(1, "分类不能为空").max(60, "分类最长 60 字"),
     tags: z.array(z.string().trim().min(1).max(40)).max(20, "标签最多 20 个").default([]),

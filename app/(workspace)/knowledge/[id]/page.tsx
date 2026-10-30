@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
-import { ArrowLeft, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Pencil, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ArticleMarkdown } from "@/components/knowledge/article-markdown";
+import { DeleteArticleButton } from "@/components/knowledge/delete-article-button";
+import { Button } from "@/components/ui/button";
 import { readArticle } from "@/lib/content/articles";
+import { articleIdFromParam } from "@/lib/content/id";
 import { stripLeadingDuplicateH1 } from "@/lib/markdown/body";
 import { extractToc } from "@/lib/markdown/toc";
+import { deleteArticleAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -14,14 +18,15 @@ type Props = { params: Promise<{ id: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
-  const result = await readArticle(id).catch(() => null);
+  const result = await readArticle(articleIdFromParam(id)).catch(() => null);
   if (result?.ok) return { title: result.article.title };
   return { title: "笔记" };
 }
 
 export default async function ArticlePage({ params }: Props) {
   const { id } = await params;
-  const result = await readArticle(id);
+  const articleId = articleIdFromParam(id);
+  const result = await readArticle(articleId);
 
   // 没这篇 → 404；读不了/内容坏了 → 显示具体原因（比 404 有用，能告诉你怎么修）
   if (!result.ok && result.reason === "not-found") notFound();
@@ -41,7 +46,7 @@ export default async function ArticlePage({ params }: Props) {
             <TriangleAlert aria-hidden className="size-4 text-warning" />
             这篇笔记读不出来
           </p>
-          <p className="mt-2 font-mono text-xs break-words text-muted-foreground">{id}.md</p>
+          <p className="mt-2 font-mono text-xs break-words text-muted-foreground">{articleId}.md</p>
           <p className="mt-3 text-sm break-words text-foreground">{result.error}</p>
         </div>
       </div>
@@ -55,13 +60,25 @@ export default async function ArticlePage({ params }: Props) {
 
   return (
     <article className="mx-auto max-w-6xl">
-      <Link
-        href="/knowledge"
-        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-      >
-        <ArrowLeft aria-hidden className="size-3.5" />
-        返回知识库
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Link
+          href="/knowledge"
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          <ArrowLeft aria-hidden className="size-3.5" />
+          返回知识库
+        </Link>
+
+        <div className="flex items-center gap-1.5">
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/knowledge/${encodeURIComponent(article.id)}/edit`}>
+              <Pencil aria-hidden />
+              编辑
+            </Link>
+          </Button>
+          <DeleteArticleButton id={article.id} title={article.title} action={deleteArticleAction} />
+        </div>
+      </div>
 
       <header className="mt-4 border-b border-border pb-5">
         <h1 className="text-2xl font-semibold tracking-tight break-words md:text-3xl">

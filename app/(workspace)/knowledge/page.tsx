@@ -20,9 +20,11 @@ export default async function KnowledgePage() {
         en="Knowledge"
         description="读的是 content/articles/ 下的 Markdown 文件本身 —— 没有数据库，你用任何编辑器改完刷新就能看到。"
         action={
-          <Button variant="outline" size="sm" disabled title="阶段 3b 启用">
-            <Plus aria-hidden />
-            新建笔记
+          <Button asChild variant="outline" size="sm">
+            <Link href="/knowledge/new">
+              <Plus aria-hidden />
+              新建笔记
+            </Link>
           </Button>
         }
       />
@@ -51,15 +53,31 @@ export default async function KnowledgePage() {
           <EmptyState
             icon={<BookOpen aria-hidden className="size-5" />}
             title="还没有正文目录"
-            description="建一个 content/articles/ 目录，把 .md 文件丢进去就会出现在这里。这个目录不进主仓库（它属于你自己的私有仓库）。"
-            stage="阶段 3a"
+            description="点上面的「新建笔记」，应用会自己建好 content/articles/；也可以手动建目录，再把 .md 文件丢进去。这个目录不进主仓库（它属于你自己的私有仓库）。"
+            stage="阶段 3b"
+            action={
+              <Button asChild size="sm">
+                <Link href="/knowledge/new">
+                  <Plus aria-hidden />
+                  写第一篇
+                </Link>
+              </Button>
+            }
           />
         ) : articles.length === 0 ? (
           <EmptyState
             icon={<BookOpen aria-hidden className="size-5" />}
             title="还没有笔记"
-            description="往 content/articles/ 里放一个 .md 文件，刷新这一页就会看到。文件名就是 id，frontmatter 里的 id 必须和它一致。"
-            stage="阶段 3a"
+            description="新建一篇试试 —— 也可以往 content/articles/ 里放一个 .md 文件，刷新这一页就会看到（文件名就是 id，frontmatter 里的 id 必须和它一致）。"
+            stage="阶段 3b"
+            action={
+              <Button asChild size="sm">
+                <Link href="/knowledge/new">
+                  <Plus aria-hidden />
+                  写第一篇
+                </Link>
+              </Button>
+            }
           />
         ) : (
           <ul className="grid gap-3 md:grid-cols-2">
