@@ -19,6 +19,21 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = process.cwd();
 
+/** 拿一个确定已退出的 PID（不要硬编码 999999：它可能被系统复用） */
+function deadPid(): number {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const result = spawnSync(process.execPath, ["-e", ""]);
+    const pid = result.pid;
+    if (!pid) continue;
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return pid;
+    }
+  }
+  throw new Error("拿不到一个已退出的 PID");
+}
+
 describe("E2E 隔离", () => {
   it("副本落在仓库里时，服务器脚本直接拒绝（不会动真实 content/）", () => {
     const result = spawnSync(process.execPath, ["scripts/e2e-server.mjs"], {
@@ -138,7 +153,8 @@ describe("E2E 隔离", () => {
     const app = path.join(scratch, "app");
     await fs.mkdir(app, { recursive: true });
     await fs.writeFile(path.join(app, "keep.txt"), "不要删我", "utf8");
-    await fs.writeFile(path.join(scratch, ".ai-learning-lab-e2e.lock"), "999999", "utf8");
+    const stale = deadPid();
+    await fs.writeFile(path.join(scratch, ".ai-learning-lab-e2e.lock"), String(stale), "utf8");
 
     const result = spawnSync(process.execPath, ["scripts/e2e-server.mjs"], {
       cwd: ROOT,
@@ -163,7 +179,8 @@ describe("E2E 隔离", () => {
     const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "e2e-reclaim-"));
     const lock = path.join(scratch, ".ai-learning-lab-e2e.lock");
     const reclaim = `${lock}.reclaim`;
-    await fs.writeFile(lock, "999999", "utf8");
+    const stale = deadPid();
+    await fs.writeFile(lock, String(stale), "utf8");
     await fs.writeFile(reclaim, String(process.pid), "utf8");
 
     const result = spawnSync(process.execPath, ["scripts/e2e-server.mjs"], {
@@ -176,7 +193,7 @@ describe("E2E 隔离", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("正在回收");
     // 旧锁和守卫都不动：等正在回收的那个进程结束 / 人工确认
-    expect(await fs.readFile(lock, "utf8")).toBe("999999");
+    expect(await fs.readFile(lock, "utf8")).toBe(String(stale));
     expect(await fs.readFile(reclaim, "utf8")).toBe(String(process.pid));
 
     await fs.rm(scratch, { recursive: true, force: true });

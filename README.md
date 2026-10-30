@@ -1,4 +1,4 @@
-﻿# AI Learning Lab
+# AI Learning Lab
 
 一个本地优先的 AI 学习、知识管理与资源收藏工作台。
 
@@ -149,7 +149,7 @@ E2E 会新建/编辑/删除笔记、建备份、真的执行恢复 —— 这些
 
 - `scripts/e2e-server.mjs` 先把**当前工作树**（含未提交改动）复制到系统临时目录，再复制 `node_modules`（Windows 用 `robocopy /MT`，36k 文件约 6 秒；Turbopack 不接受指向工作区外的目录联接，实测会报「Could not find the Next.js package」）
 - 用 `e2e/fixtures/content/` 覆盖副本的 `content/`：2 篇夹具笔记（含中文 id）、2 条资源、2 条任务
-- **安全闸门**：词法 + 物理两层路径检查（目录联接别名也拦）、`app/` 必须是普通目录且带所有权标记才允许删除、同一份副本用 PID 锁 + 回收守卫串行（死锁安全回收，空锁/守卫残留 fail closed）；`E2E_REUSE=1` 只复用构建并重置 `content/` 与 `backups/`。这些都有真进程回归（`tests/e2e-safety.test.ts` 13 条 + `tests/e2e-lock.test.ts` 5 条）；端口固定 **3210（本机）/ 3211（局域网模式）**，不碰真实 dev 的 3000
+- **安全闸门**：词法 + 物理两层路径检查（目录联接别名也拦）、`app/` 必须是普通目录且带所有权标记才允许删除、同一份副本用 PID 锁 + 回收守卫串行（死锁安全回收；空锁 fail closed，守卫残留只挡旧锁回收）；`E2E_REUSE=1` 只复用构建并重置 `content/` 与 `backups/`。覆盖分两层：**子进程级安全闸门 13 条**（`tests/e2e-safety.test.ts`）+ **同进程内确定性锁交错 5 条**（`tests/e2e-lock.test.ts`，barrier 钩子，不是两个 OS 进程）；端口固定 **3210（本机）/ 3211（局域网模式）**，不碰真实 dev 的 3000
 - 3211 用 `ALLOW_LAN=1` + 测试口令 + 随机 `SESSION_SECRET` 起第二个实例，专门验认证
 - 想改测试时用 `E2E_REUSE=1 npm run test:e2e`（复用上次副本与构建，省掉 70 秒构建）；`E2E_SCRATCH=<dir>` 可以指定副本位置
 
