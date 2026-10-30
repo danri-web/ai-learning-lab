@@ -34,6 +34,12 @@ const SCRATCH = path.resolve(
   process.env.E2E_SCRATCH ?? path.join(os.tmpdir(), "ai-learning-lab-e2e"),
 );
 const APP = path.join(SCRATCH, "app");
+/**
+ * 所有权标记：只有带这个标记的 scratch，才允许被 `removeApp()` 递归删除。
+ * 没有它而 `app/` 又存在时一律拒绝 —— 防止 `E2E_SCRATCH` 误配到一个
+ * 恰好有 `app/` 子目录的项目根目录，把别人的源码删掉。
+ */
+const MARKER = path.join(SCRATCH, ".ai-learning-lab-e2e");
 const FIXTURES = path.join(REPO, "e2e", "fixtures", "content");
 const NEXT_BIN = path.join(APP, "node_modules", "next", "dist", "bin", "next");
 
@@ -108,6 +114,22 @@ async function removeApp() {
   await fs.rm(APP, { recursive: true, force: true, maxRetries: 3 });
 }
 
+/** `app/` 已存在但没有我们的标记 → 拒绝删除（可能是别人的目录） */
+async function assertOwnedScratch() {
+  const stat = await fs.lstat(APP).catch(() => null);
+  if (!stat) return;
+  const owned = await fs.access(MARKER).then(
+    () => true,
+    () => false,
+  );
+  if (!owned) {
+    fail(
+      `副本目录已存在、但不是本脚本建的（缺标记 ${MARKER}）：${APP}\n` +
+        `为免误删别人的目录，先手动确认并删除它，或换一个 E2E_SCRATCH。`,
+    );
+  }
+}
+
 /**
  * 复制 node_modules。
  *
@@ -147,8 +169,11 @@ async function writeFixtures() {
 
 async function prepare() {
   assertSafeScratch();
+  await assertOwnedScratch();
   console.log(`[e2e] 副本：${APP}`);
   await removeApp();
+  await fs.mkdir(SCRATCH, { recursive: true });
+  await fs.writeFile(MARKER, "created by scripts/e2e-server.mjs\n", "utf8");
   await fs.mkdir(APP, { recursive: true });
   await copyTree();
   await copyNodeModules();

@@ -1,8 +1,8 @@
-# AI Learning Lab
+﻿# AI Learning Lab
 
 一个本地优先的 AI 学习、知识管理与资源收藏工作台。
 
-**当前状态：阶段 1–8 全部完成（2026-10-30）。** 笔记能新建/编辑/删除（中文标题直接当文件名）；资源收藏能增删改、按类型/分类/标签筛选、三种排序，并能挂到某篇笔记上。链接只接受 http/https，应用**从不抓取**你填的地址。`Ctrl+K` 能搜全部笔记与资源：分组、摘要、高亮、`↑↓`/`Enter`/`Esc` 键盘操作，**不建索引**（每次搜都读文件，所以永远不会有"索引过期"）。学习任务有 Todo / 进行中 / 已完成三档、截止日期（会算逾期）、可关联多篇笔记与多条资源；总览页的数字全部从文件现算。阶段 7 把 `content/` 打成带清单的 zip（每个文件 sha256），恢复前先预览、先留快照、失败自动回滚；局域网默认关闭，打开后用口令登录，所有页面与写入都要过同一道门。阶段 8 补上了 Playwright 端到端测试（系统 Chrome；Windows 桌面 + Pixel 7 模拟）、axe 可访问性扫描（WCAG 2 A/AA，九个界面 0 命中）、性能基线、备份恢复的完整 E2E，以及 `app/error.tsx` 错误边界。**交付门槛是 `npm run verify`（450 条断言）加 `npm run test:e2e`。**
+**当前状态：阶段 1–8 全部完成（2026-10-30）。** 笔记能新建/编辑/删除（中文标题直接当文件名）；资源收藏能增删改、按类型/分类/标签筛选、三种排序，并能挂到某篇笔记上。链接只接受 http/https，应用**从不抓取**你填的地址。`Ctrl+K` 能搜全部笔记与资源：分组、摘要、高亮、`↑↓`/`Enter`/`Esc` 键盘操作，**不建索引**（每次搜都读文件，所以永远不会有"索引过期"）。学习任务有 Todo / 进行中 / 已完成三档、截止日期（会算逾期）、可关联多篇笔记与多条资源；总览页的数字全部从文件现算。阶段 7 把 `content/` 打成带清单的 zip（每个文件 sha256），恢复前先预览、先留快照、失败自动回滚；局域网默认关闭，打开后用口令登录，所有页面与写入都要过同一道门。阶段 8 补上了 Playwright 端到端测试（系统 Chrome；Windows 桌面 + Pixel 7 模拟）、axe 可访问性扫描（WCAG 2 A/AA，九个界面 0 命中）、性能基线、备份恢复的完整 E2E，以及 `app/error.tsx` 错误边界。**交付门槛是 `npm run verify`（451 条断言）加 `npm run test:e2e`。**
 
 ![总览](docs/screenshot-dashboard.png)
 
@@ -141,7 +141,7 @@ npm run format:check # Prettier 只检查
 
 ## 测试与发布（阶段 8）
 
-交付门槛是两条命令：`npm run verify`（**450 条断言：449 通过 + 1 跳过**，跳过的是本机建不出的文件级符号链接）和 `npm run test:e2e`（Playwright）。端到端**不在 `verify` 里**：它要起服务、会改测试数据、单轮约 2.5 分钟，塞进每次提交会让人开始跳过闸门。
+交付门槛是两条命令：`npm run verify`（**451 条断言：450 通过 + 1 跳过**，跳过的是本机建不出的文件级符号链接）和 `npm run test:e2e`（Playwright）。端到端**不在 `verify` 里**：它要起服务、会改测试数据、单轮约 2.5 分钟，塞进每次提交会让人开始跳过闸门。
 
 ### 端到端测试怎么隔离数据
 
@@ -149,7 +149,7 @@ E2E 会新建/编辑/删除笔记、建备份、真的执行恢复 —— 这些
 
 - `scripts/e2e-server.mjs` 先把**当前工作树**（含未提交改动）复制到系统临时目录，再复制 `node_modules`（Windows 用 `robocopy /MT`，36k 文件约 6 秒；Turbopack 不接受指向工作区外的目录联接，实测会报「Could not find the Next.js package」）
 - 用 `e2e/fixtures/content/` 覆盖副本的 `content/`：2 篇夹具笔记（含中文 id）、2 条资源、2 条任务
-- **安全闸门**：副本路径落在仓库里时脚本直接退出（`tests/e2e-safety.test.ts` 用真进程撞过这条）；端口固定 **3210（本机）/ 3211（局域网模式）**，不碰真实 dev 的 3000
+- **安全闸门**：副本路径落在仓库里时脚本直接退出；`app/` 已存在但没有所有权标记（`.ai-learning-lab-e2e`）时也拒绝删除 —— 防止 `E2E_SCRATCH` 误配到另一个恰好有 `app/` 的项目根。`tests/e2e-safety.test.ts` 用真进程撞过这两条；端口固定 **3210（本机）/ 3211（局域网模式）**，不碰真实 dev 的 3000
 - 3211 用 `ALLOW_LAN=1` + 测试口令 + 随机 `SESSION_SECRET` 起第二个实例，专门验认证
 - 想改测试时用 `E2E_REUSE=1 npm run test:e2e`（复用上次副本与构建，省掉 70 秒构建）；`E2E_SCRATCH=<dir>` 可以指定副本位置
 
@@ -173,17 +173,17 @@ E2E 会新建/编辑/删除笔记、建备份、真的执行恢复 —— 这些
 
 ### 性能基线（2026-10-30，Windows 10 / Node 24.21 / 系统 Chrome 156）
 
-同一天跑了两次，数字会波动，所以给范围而不是单次快照：
+同一天跑了三次，数字会波动，所以给范围而不是单次快照：
 
 | 页面 | DOMContentLoaded | load |
 | --- | --- | --- |
-| 总览 | 90–231 ms | 231–258 ms |
-| 知识库 | 81–88 ms | 86–93 ms |
-| 资源收藏 | 68–89 ms | 116–138 ms |
-| 学习任务 | 149–170 ms | 159–180 ms |
+| 总览 | 90–231 ms | 230–258 ms |
+| 知识库 | 71–88 ms | 76–93 ms |
+| 资源收藏 | 61–89 ms | 99–138 ms |
+| 学习任务 | 93–170 ms | 131–180 ms |
 | 备份 | 146–237 ms | 154–246 ms |
 
-搜索（2 篇笔记 / 2 条资源，扫盘 + 解析 + 匹配）：**4.2–4.8 ms**（界面上显示的数字，和用户看到的一致）。阈值定得很宽（页面 3s、搜索 500ms），要抓的是"某次改动把页面拖成几秒"，不是微基准。
+搜索（2 篇笔记 / 2 条资源，扫盘 + 解析 + 匹配）：**2.7–4.8 ms**（界面上显示的数字，和用户看到的一致）。阈值定得很宽（页面 3s、搜索 500ms），要抓的是"某次改动把页面拖成几秒"，不是微基准。
 
 ### 阶段 8 抓到的三个真问题
 
@@ -239,7 +239,7 @@ proxy.ts           每个请求的第一道门（局域网认证 / 本机绑定 
 scripts/           auth-lib / set-password / start-lan / env-file / e2e-server（隔离副本）
 e2e/               Playwright 用例、共享断言、fixtures（假笔记/资源/任务，不进 content/）
 playwright.config.ts  两个 project（Windows Chrome / Pixel 7）+ 自动起隔离服务
-tests/             Vitest 单元测试（450 条，其中 1 条在本机会 skipped）
+tests/             Vitest 单元测试（451 条，其中 1 条在本机会 skipped）
 docs/              需求书、架构决策、截图
 backups/           备份 zip（gitignored；明文，别放公开同步盘）
 public/            静态资源
@@ -437,13 +437,13 @@ public/            静态资源
 - **真实恢复闭环**：改夹具 → 备份（自检）→ 再改 → 预览 → 确认 → 内容回退 → 对自动生成的 `pre-restore` 快照点「回滚」→ 回到恢复前。没有拿任何真实笔记当实验品
 - **局域网认证的真实请求**：未登录页面 307、action POST 401、body 不含笔记标题；错误口令有提示；正确口令登录后能读到夹具；登出后同一浏览器再访问回到 307。审计 v4 留的「F3 真机请求」在这里补上
 - **可访问性**：axe 扫 7 个页面 + 搜索弹窗 + 登录页（WCAG 2 A/AA），**九个界面 0 命中**；修掉搜索按钮的 2.5.3 与设置页的 `definition-list`
-- **性能**：五个页面 DOMContentLoaded 68–237 ms（同日两次运行），搜索 4.2–4.8 ms（2 篇笔记 / 2 条资源）
+- **性能**：五个页面 DOMContentLoaded 61–237 ms（同日三次运行），搜索 2.7–4.8 ms（2 篇笔记 / 2 条资源）
 - **错误边界**：新增 `app/error.tsx`（`"use client"`、重试 + 回总览、不 import 服务端组件/fs）。为了证明它真接得住，在 `_scratch` 副本的 `/learning` 里故意 `throw`、重新构建后截图 —— **真实仓库里没有这行抛错代码**；桌面与 390px 两张截图在 `docs/`
 - **重装/恢复演练**：在 `_scratch/release-check` 的干净副本里按 README 走
   `git clone（HEAD）→ npm ci（771 包，约 1 分钟）→ 放手机测试备份 zip → build → start →`
   `/backup 预览（新增 7 / 覆盖 0）→ 执行恢复 → 2 篇笔记 + 资源 + 任务都回来`；
   干净副本里再跑一遍 Vitest 也全过
-- **断言**：444 → **450**（449 通过 + 1 skipped）。新增 `tests/error-boundary.test.ts` 3 条、`tests/e2e-safety.test.ts` 3 条；E2E 单独一条命令，不进 `verify`
+- **断言**：444 → **451**（450 通过 + 1 skipped）。新增 `tests/error-boundary.test.ts` 3 条、`tests/e2e-safety.test.ts` 4 条；E2E 单独一条命令，不进 `verify`
 - **实测踩到的坑**：① Turbopack 以最近的 lockfile 当工作区根，**不接受指向工作区外的 node_modules 目录联接**（`Could not find the Next.js package`）→ 改成 robocopy 真实复制；② React 19 在 form action 后 reset 表单，`<select>`/radio 的 value 没变时不会写回 DOM → 校验失败后控件看起来被清空（已修 + E2E 回归）；③ Next 的路由播报器也是 `role="alert"`，E2E 取 alert 必须收窄；④ 404 页的主文档本身会记一条 console error，不能和"脚本报错"混在一起断言；⑤ Pixel 7 设备档 + 系统 Chrome 要用 `channel: "chrome"`，否则会去找没下载的 Chromium
 
 ## 已知问题（2026-10-30）

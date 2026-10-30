@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -30,6 +31,28 @@ describe("E2E 隔离", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("副本目录必须在仓库外面");
     expect(result.stdout).not.toContain("[e2e] 已复制");
+  });
+
+  it("已有 app/ 但没有所有权标记时拒绝删除（防 E2E_SCRATCH 误配）", async () => {
+    // 必须放在仓库外：就是这条守卫要拦的「误配到别人的项目根」场景
+    const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "e2e-owned-"));
+    const app = path.join(scratch, "app");
+    await fs.mkdir(app, { recursive: true });
+    await fs.writeFile(path.join(app, "keep.txt"), "不要删我", "utf8");
+
+    const result = spawnSync(process.execPath, ["scripts/e2e-server.mjs"], {
+      cwd: ROOT,
+      env: { ...process.env, E2E_SCRATCH: scratch },
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("不是本脚本建的");
+    // 关键断言：别人的文件必须原样还在
+    expect(await fs.readFile(path.join(app, "keep.txt"), "utf8")).toBe("不要删我");
+
+    await fs.rm(scratch, { recursive: true, force: true });
   });
 
   it("Playwright 用 3210/3211，不碰真实 dev 的 3000", async () => {
