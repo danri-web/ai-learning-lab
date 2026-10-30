@@ -11,8 +11,9 @@ npm run audit:probes
 ```
 
 输出 33 行 `PASS/FAIL` + 最后一行 `结果：33/33 PASS`，退出码 0 表示全过。
-同一条命令还会跑 5 个命名回归套件（frontmatter-security / restore-lookup-failure / restore-discard /
-service-write-gate / restore-recovery），合计 6 个文件、53 条 —— 不用信任主套件的 535 条汇总。
+同一条命令还会跑 6 个命名回归套件（frontmatter-security / restore-lookup-failure / restore-discard /
+service-write-gate / restore-recovery / backup-recovery-cache），合计 7 个文件、57 条 ——
+不用信任主套件的 536 条汇总。
 
 ## 覆盖什么
 

@@ -119,6 +119,16 @@ function readStartupNotice(): BackupRecoveryNotice | null {
   return startupNotice;
 }
 
+/**
+ * 让启动提示永久失效（v3d 复核：只把 startupNotice 置 null 不够）。
+ * 必须同时把 startupNoticeRead 置真，否则下一次 readStartupNotice 会从 globalThis
+ * 把旧的启动结果重新读回来 —— 旧提示在“新恢复成功后”又冒出来。
+ */
+function clearStartupNotice(): void {
+  startupNotice = null;
+  startupNoticeRead = true;
+}
+
 async function refreshRecovery(): Promise<void> {
   // 只合并“同时发生的检查”：并发请求共用一次 IO，检查完就清掉，下一次重新读日志
   if (recoveryInFlight) return recoveryInFlight;
@@ -129,7 +139,7 @@ async function refreshRecovery(): Promise<void> {
       currentNotice = describeRecovery(result);
       // 本次真的收尾了，启动提示就过期
       if (result.state === "recovered" || result.state === "already-complete") {
-        startupNotice = null;
+        clearStartupNotice();
       }
     } catch (error) {
       // 读日志/回滚本身抛异常：保留错误提示，下一次请求会重新检查
@@ -239,10 +249,11 @@ export async function applyRestoreFromForm(input: {
   if (blocked) return { ok: false, reason: "io", error: blocked };
 
   const result = await applyRestore(input);
-  // 这次恢复自己写了一份新日志并收尾：启动提示不再成立。
+  // 这次恢复自己写了一份新日志并收尾：启动提示不再成立（clearStartupNotice 会标记“已消费”，
+  // 防止下一次 overview 从 globalThis 把旧提示读回来）。
   // 失败时保留（下一次 overview 会现读日志，把真实状态显示出来）。
   if (result.ok) {
-    startupNotice = null;
+    clearStartupNotice();
     currentNotice = null;
   }
   return result;
@@ -271,8 +282,7 @@ export async function discardRestoreJournal(): Promise<{ ok: true } | BackupServ
   // 日志已经删掉：当前提示与启动提示都清掉，页面回到正常状态；
   // 下一次 refresh 会重新读日志（应该得到 none）
   currentNotice = null;
-  startupNotice = null;
-  startupNoticeRead = true;
+  clearStartupNotice();
   recoveryInFlight = null;
   return { ok: true };
 }

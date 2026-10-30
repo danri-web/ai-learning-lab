@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 /**
  * 外部复核用的探针套件（不属于 `npm run verify` 的交付门槛）。
  * 单独一份 config，因为主套件只收 `tests/**` 下的 `*.test.ts`；
- * 探针用 `.probe.ts`，不改变 535 条断言的计数。
+ * 探针用 `.probe.ts`，不改变 536 条断言的计数。
  */
 export default defineConfig({
   resolve: {
@@ -21,6 +21,7 @@ export default defineConfig({
       "tests/restore-discard.test.ts",
       "tests/service-write-gate.test.ts",
       "tests/restore-recovery.test.ts",
+      "tests/backup-recovery-cache.test.ts",
     ],
     testTimeout: 30_000,
     // 让 console.log 直接进 stdout（不带 Vitest 的 "stdout | ..." 包装），
