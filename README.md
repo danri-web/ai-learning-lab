@@ -144,9 +144,9 @@ npm run format:check # Prettier 只检查
 
 ## 测试与发布（阶段 8）
 
-交付门槛是两条命令：`npm run verify`（**531 条断言：530 通过 + 1 跳过**，跳过的是本机建不出的文件级符号链接）和 `npm run test:e2e`（Playwright）。端到端**不在 `verify` 里**：它要起服务、会改测试数据、单轮约 2.5 分钟，塞进每次提交会让人开始跳过闸门。
+交付门槛是两条命令：`npm run verify`（**535 条断言：534 通过 + 1 跳过**，跳过的是本机建不出的文件级符号链接）和 `npm run test:e2e`（Playwright）。端到端**不在 `verify` 里**：它要起服务、会改测试数据、单轮约 2.5 分钟，塞进每次提交会让人开始跳过闸门。
 
-另有一条**外部复核用的只读探针**（不属于交付门槛，也不计入 531）：`npm run audit:probes`。32 个样例覆盖 frontmatter 的 Unicode 空白与重复 BOM、读/保存/恢复预览三个入口、写入闸门与恢复状态机；输出一页 `PASS/FAIL`，只读、不联网、跑完自动清临时目录。详见 [`scripts/audit/README.md`](scripts/audit/README.md)。
+另有一条**外部复核用的只读探针**（不属于交付门槛，也不计入 535）：`npm run audit:probes`。33 个探针样例 + 5 个命名回归套件（6 个文件、53 条），覆盖 frontmatter 的 Unicode 空白/重复 BOM/无换行、读/保存/恢复预览三个入口、写入闸门、查询失败、放弃排队、恢复状态机与缓存边界；输出一页 `PASS/FAIL`，只读、不联网、跑完自动清临时目录。详见 [`scripts/audit/README.md`](scripts/audit/README.md)。
 
 ### 端到端测试怎么隔离数据
 
@@ -244,7 +244,7 @@ proxy.ts           每个请求的第一道门（局域网认证 / 本机绑定 
 scripts/           auth-lib / set-password / start-lan / env-file / e2e-server（隔离副本）
 e2e/               Playwright 用例、共享断言、fixtures（假笔记/资源/任务，不进 content/）
 playwright.config.ts  两个 project（Windows Chrome / Pixel 7）+ 自动起隔离服务
-tests/             Vitest 单元测试（531 条，其中 1 条在本机会 skipped）
+tests/             Vitest 单元测试（535 条，其中 1 条在本机会 skipped）
 docs/              需求书、架构决策、操作指南、截图
 backups/           备份 zip（gitignored；明文，别放公开同步盘）
 public/            静态资源
@@ -448,7 +448,7 @@ public/            静态资源
   `git clone（HEAD）→ npm ci（771 包，约 1 分钟）→ 放手机测试备份 zip → build → start →`
   `/backup 预览（新增 7 / 覆盖 0）→ 执行恢复 → 2 篇笔记 + 资源 + 任务都回来`；
   干净副本里再跑一遍 Vitest 也全过
-- **断言**：444 → **465**（464 通过 + 1 skipped）。新增 `tests/error-boundary.test.ts` 3 条、`tests/e2e-safety.test.ts` 13 条 + `tests/e2e-lock.test.ts` 5 条；E2E 单独一条命令，不进 `verify`。**2026-10-30 外部验收审计 + 复核后共补了 66 条**（frontmatter 执行 5 + 登录体/限速 7 + TOC 3 + DATA-01 恢复日志 17 + v2 审计的 Unicode 空白与写入闸门 22 + v3b 复核的重复 BOM/查询失败/重试/排队 12），当前 **531**（530 + 1 skipped）
+- **断言**：444 → **465**（464 通过 + 1 skipped）。新增 `tests/error-boundary.test.ts` 3 条、`tests/e2e-safety.test.ts` 13 条 + `tests/e2e-lock.test.ts` 5 条；E2E 单独一条命令，不进 `verify`。**2026-10-30 外部验收审计 + 两轮复核后共补了 70 条**（frontmatter 执行 5 + 登录体/限速 7 + TOC 3 + DATA-01 恢复日志 17 + v2 审计的 Unicode 空白与写入闸门 22 + v3b 复核的重复 BOM/查询失败/重试/排队 12 + v3c 复核的缓存边界与无换行 4），当前 **535**（534 + 1 skipped）
 - **实测踩到的坑**：① Turbopack 以最近的 lockfile 当工作区根，**不接受指向工作区外的 node_modules 目录联接**（`Could not find the Next.js package`）→ 改成 robocopy 真实复制；② React 19 在 form action 后 reset 表单，`<select>`/radio 的 value 没变时不会写回 DOM → 校验失败后控件看起来被清空（已修 + E2E 回归）；③ Next 的路由播报器也是 `role="alert"`，E2E 取 alert 必须收窄；④ 404 页的主文档本身会记一条 console error，不能和"脚本报错"混在一起断言；⑤ Pixel 7 设备档 + 系统 Chrome 要用 `channel: "chrome"`，否则会去找没下载的 Chromium
 
 ### 外部验收审计（GPT，2026-10-30）：High 为真，已修；架构偏离待拍板
@@ -465,13 +465,13 @@ public/            静态资源
 | **QA-03**：移动端没有目录 | 真 | 笔记详情窄屏加可折叠目录 |
 | **DATA-01**：恢复不是崩溃原子 | 真限制 | **已修**：`backups/restore-journal.json`（`applying` / `verified`）+ **进程启动时**自动收尾（v2 审计后从「打开备份页才收尾」提前）；未收尾时写入闸门挡住所有正常写入；坏日志 / 缺快照 fail closed，可在 `/backup` 放弃日志；17 条恢复 + 5 条闸门测试（ADR **D17/D18**）。仍不是目录级原子 |
 | **REQ-01**：SQLite/Drizzle/migrations/FTS5/Shiki/文件名 id 与最初需求书不符 | 真（对最初需求书） | **已按 A 正式变更**：`docs/需求变更-2026-10-30.md`；安全与功能验收不放宽 |
-| 测试 NOT TESTED | 审计方环境 `npm ci` EPERM | 不是应用失败；本项目实测 `verify` 531 条 + E2E 13/7 全绿。独立验收仍需能装依赖的机器 |
+| 测试 NOT TESTED | 审计方环境 `npm ci` EPERM | 不是应用失败；本项目实测 `verify` 535 条 + E2E 13/7 全绿。独立验收仍需能装依赖的机器 |
 
 > **外部验收审计 v2（2026-10-30 晚）**：架构简化被接受，但安全判定仍 NOT ACCEPTED，给了两个具体缺陷：
 > ① `---javascript\u00a0` 这类 Unicode 空白绕过 frontmatter 守卫，payload 在真实的
 > `parseArticle` / `readFrontmatter` / `checkBackupPayload` 里执行（High）；
 > ② 延迟恢复会覆盖重启后先做的编辑（Medium）。两条都已按复现修完，见下方「v2 审计修复」与 ADR **D18**。
-> 新验收包 `output/ai-lab-acceptance-2026-10-30-v3c`（含 `npm run audit:probes` 的 32/32 日志）；旧包 `ddf54bc`（含 SEC-01）与 v2 包（含空白绕过）、v3/v3b 都被 v3c 取代
+> 新验收包 `output/ai-lab-acceptance-2026-10-30-v3d`（含 `npm run audit:probes` 的 33/33 日志）；旧包 `ddf54bc`（含 SEC-01）与 v2 包（含空白绕过）、v3/v3b/v3c 都被 v3d 取代
 > 都不要继续分发。
 
 ### v2 审计修复：Unicode 空白 frontmatter + 启动即收尾（2026-10-30）
@@ -498,7 +498,7 @@ public/            静态资源
 
 - **两个前导 BOM 会绕过开头校验**：`stripBom` 只剥一层，剩下的一层让 `startsWith("---")` 为假；
   gray-matter 自己再剥一层，正好看到 `---js`。现在 frontmatter 入口**剥掉所有前导 BOM 再校验**，
-  匹配后照旧把语言标记抹掉（`tests/frontmatter-security.test.ts` 增至 24 条，含双 BOM 与无换行）。
+  匹配后照旧把语言标记抹掉（`tests/frontmatter-security.test.ts` 25 条，含双 BOM、真正无换行 + 引擎记录器）。
 - **日志查询失败被当成“没有日志”**：`lstat` 的 EACCES/EIO 原来返回 `journal: null`，写入闸门会放行。
   现在只有 **ENOENT** 算“没有”，其它错误一律 fail closed（`tests/restore-lookup-failure.test.ts` 4 条，
   注入 EACCES/EIO/ENOENT）。
@@ -506,7 +506,20 @@ public/            静态资源
   `discardPendingRestore()`（与恢复共用 `serialize`），不会插队（`tests/restore-discard.test.ts` 2 条）。
 - **服务层写入真的被挡住**：`tests/service-write-gate.test.ts` 4 条 mock 写入层，证明闸门拦截时
   写入函数一次都没被调用，放行时才调用 —— 不再只断言“消息长什么样”。
-- 探针增至 **32 个**（新增双 BOM 两例），仍不计入 531 条断言。
+- 探针增至 **33 个**，并同时跑 5 个命名回归套件（6 文件 / 53 条），仍不计入 535 条断言。
+
+### v3c 复核修复：检查结果不缓存、无换行 fixture（2026-10-30）
+
+复核对 v3c 的判定：**P1 ACCEPT、P2 数据保全 ACCEPT；重试/可见出口 REJECT**（一条 Medium）。
+
+- **成功的检查被永久缓存**：overview 先看到“没有日志” → 之后恢复失败留下 `applying` → 后续 overview
+  复用旧成功、`recovery` 一直 `null`，「放弃日志」入口不出现（写入仍被闸门挡着，但没有可见出口）。
+  现在 `refreshRecovery()` **只缓存正在进行的检查**，每次 overview 都现读 journal；启动提示单独存，
+  不参与当前状态判断（`tests/backup-recovery-cache.test.ts` 3 条：启动提示保留、先成功后失败能刷新、并发只查一次）。
+- **“无换行”回归其实带了换行**：现在 fixture 是真的 `---javascriptX`（没有 `\n`），并把 gray-matter 的
+  `javascript` 引擎换成记录器，断言**引擎没有被选中**。
+- **`audit:probes` 只跑探针**：现在同时跑 frontmatter / lookup / discard / service-gate / recovery
+  五个命名套件，外部复核一条命令就能看到 53 条结果。
 
 ### DATA-01 修复：恢复日志 + 启动自动回滚（2026-10-30）
 

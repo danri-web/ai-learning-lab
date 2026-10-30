@@ -13,7 +13,7 @@ import { restoreJournalPath } from "@/lib/content/restore-journal";
 import { recoverPendingRestore } from "@/lib/content/restore-store";
 
 /**
- * v3 复核探针（32 个样例）。
+ * v3 复核探针（33 个样例）。
  *
  * 给外部复核者的入口：`npm run audit:probes`，只读、不联网、不碰真实 `content/` 与 `backups/`。
  * 它不替代 `npm run verify`，只是把“内容解析不执行代码 / 恢复状态机不丢数据”这两件事
@@ -111,7 +111,7 @@ for (const [label, gap] of GAPS) {
   }
 }
 
-// B–H. 其它入口与边界（11）
+// B–H. 其它入口与边界（12）
 cases.push({
   title: "文件头 BOM + 尾部 NBSP：不执行",
   run: () => {
@@ -129,11 +129,33 @@ cases.push({
   },
 });
 cases.push({
-  title: "两个前导 BOM + 无换行的 ---javascriptX：不执行",
+  title: "两个前导 BOM + 未知语言 ---javascriptX：不执行",
   run: () => {
     reset();
     const payload = `\uFEFF\uFEFF---javascriptX\n(globalThis.__aiLabProbeMarker = 1, { ${FIELDS} })\n---\n正文`;
     return !parseArticle(payload, "hello").ok && executed() === 0;
+  },
+});
+cases.push({
+  title: "完全没有换行的 ---javascriptX：不选非数据引擎",
+  run: () => {
+    reset();
+    const engines = (matter as unknown as { engines: Record<string, unknown> }).engines;
+    const original = engines.javascript;
+    let engineSelected = false;
+    engines.javascript = {
+      parse: () => {
+        engineSelected = true;
+        return {};
+      },
+    };
+    try {
+      // fixture 里没有 \n：覆盖 gray-matter 缺换行时的截断路径
+      const result = parseArticle("---javascriptX", "hello");
+      return !result.ok && !engineSelected && executed() === 0;
+    } finally {
+      engines.javascript = original;
+    }
   },
 });
 cases.push({

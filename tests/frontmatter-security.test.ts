@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import matter from "gray-matter";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { parseArticle, readFrontmatter } from "@/lib/content/frontmatter";
@@ -161,11 +162,33 @@ describe("frontmatter 守卫不能被 Unicode 空白绕过（V2-SEC-01）", () =
     expect(marker()).toBe(0);
   });
 
-  it("两个前导 BOM + 没有换行：检测器截断也不能拿到 javascript", () => {
+  it("两个前导 BOM + 未知语言 ---javascriptX：拒绝，payload 未执行", () => {
     const payload = `\uFEFF\uFEFF---javascriptX\n(globalThis.__aiLabFrontmatterMarker = 9, { ${FIELDS} })\n---\n正文`;
     const result = parseArticle(payload, "hello");
     expect(result.ok).toBe(false);
     expect(marker()).toBe(0);
+  });
+
+  it("完全没有换行的 ---javascriptX：不会选到非数据引擎（v3c 复核）", () => {
+    const engines = (matter as unknown as { engines: Record<string, unknown> }).engines;
+    const original = engines.javascript;
+    let engineSelected = false;
+    engines.javascript = {
+      parse: () => {
+        engineSelected = true;
+        return {};
+      },
+    };
+
+    try {
+      // 注意：这个 fixture 里**没有** \n，走的是 gray-matter 在缺失换行时的截断路径
+      const result = parseArticle("---javascriptX", "hello");
+      expect(result.ok).toBe(false);
+      expect(engineSelected).toBe(false);
+      expect(marker()).toBe(0);
+    } finally {
+      engines.javascript = original;
+    }
   });
 
   it("readFrontmatter（保存旧笔记）同样拒绝且不执行", () => {

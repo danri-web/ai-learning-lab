@@ -91,59 +91,71 @@ function describeRecovery(result: RestoreRecovery): BackupRecoveryNotice | null 
 }
 
 /**
- * 兜底的启动恢复（v2 审计 V2-DATA-01）。
+ * 恢复检查（v2/v3b/v3c 复核）。
  *
- * 正常路径是 `instrumentation.ts` 在进程启动时先收尾（Next 自己会跳过 build 阶段）；
- * 这里再做一次「每进程一次」的守卫，覆盖 instrumentation 没跑到的场景（测试、旧入口）。
- * 两次都走 `serialize`，不会和正文写入交错。
+ * 正常路径是 `instrumentation.ts` 在进程启动时先收尾（Next 自己跳过 build 阶段）；
+ * 这里每次打开 /backup、建备份、预览、恢复都**现读一次 journal** —— 只缓存“正在进行的检查”，
+ * 不缓存结果。v3c 复核给的反例：先检查到“没有日志”（成功），之后恢复失败留下 `applying`，
+ * 如果成功被缓存，页面会一直报 null、放弃入口不出现。现在结果不缓存，下一次请求就能看到。
  *
- * 为什么还要写入闸门：只有这一层的话，重启后先编辑、后打开 /backup 仍会被回滚顶掉；
- * `lib/content/restore-gate.ts` 会在日志未收尾时直接拒绝所有正常写入。
+ * 启动提示单独存：instrumentation 收尾后日志已经没了，现读只能是 none，
+ * 所以“已自动回滚”那条提示要保留，直到本次进程里又发生一次真实的收尾或用户放弃日志。
+ *
+ * 所有路径都走 `serialize`，不会和正文写入交错。
  */
-let recoveryOnce: Promise<void> | null = null;
-let recoveryNotice: BackupRecoveryNotice | null = null;
+let recoveryInFlight: Promise<void> | null = null;
+let startupNotice: BackupRecoveryNotice | null = null;
+let startupNoticeRead = false;
+let currentNotice: BackupRecoveryNotice | null = null;
 
-async function recoverOnce(): Promise<void> {
-  if (!recoveryOnce) {
-    recoveryOnce = (async () => {
-      try {
-        // 启动时（instrumentation）已经收尾过的话，直接用那份结果做提示：
-        // 日志这时已经被删了，再读只会得到 none，页面就看不到「已自动回滚」。
-        const startup = startupRecovery();
-        if (startup && (startup.state === "recovered" || startup.state === "already-complete")) {
-          recoveryNotice = describeRecovery(startup);
-          return;
-        }
-
-        const result = await recoverPendingRestore({});
-        recoveryNotice = describeRecovery(result);
-        // 返回 failed 时允许下一次请求重试：用户可能刚把快照放回 backups/，
-        // 刷新页面就应该重新收尾（v3b 复核：原来缓存住失败，刷新不会重试）。
-        if (result.state === "failed") recoveryOnce = null;
-      } catch (error) {
-        // 读日志/回滚本身抛异常（不是「返回失败」）：保留提示，允许下次请求再试一次
-        recoveryOnce = null;
-        recoveryNotice = {
-          tone: "error",
-          message: "检查上次恢复有没有收尾时出错，先不要执行恢复",
-          detail: message(error),
-        };
-      }
-    })();
+function readStartupNotice(): BackupRecoveryNotice | null {
+  if (!startupNoticeRead) {
+    startupNoticeRead = true;
+    const startup = startupRecovery();
+    if (startup && (startup.state === "recovered" || startup.state === "already-complete")) {
+      startupNotice = describeRecovery(startup);
+    }
   }
-  await recoveryOnce;
+  return startupNotice;
+}
+
+async function refreshRecovery(): Promise<void> {
+  // 只合并“同时发生的检查”：并发请求共用一次 IO，检查完就清掉，下一次重新读日志
+  if (recoveryInFlight) return recoveryInFlight;
+
+  recoveryInFlight = (async () => {
+    try {
+      const result = await recoverPendingRestore({});
+      currentNotice = describeRecovery(result);
+      // 本次真的收尾了，启动提示就过期
+      if (result.state === "recovered" || result.state === "already-complete") {
+        startupNotice = null;
+      }
+    } catch (error) {
+      // 读日志/回滚本身抛异常：保留错误提示，下一次请求会重新检查
+      currentNotice = {
+        tone: "error",
+        message: "检查上次恢复有没有收尾时出错，先不要执行恢复",
+        detail: message(error),
+      };
+    } finally {
+      recoveryInFlight = null;
+    }
+  })();
+
+  return recoveryInFlight;
 }
 
 /** 恢复没收尾时，建备份/预览/恢复都先拒绝（v2 审计：以前会顺着混合状态继续做） */
 function recoveryBlocked(): string | null {
-  if (recoveryNotice?.tone !== "error") return null;
-  return `上次恢复没有收尾，先处理它再继续：${recoveryNotice.message}`;
+  if (currentNotice?.tone !== "error") return null;
+  return `上次恢复没有收尾，先处理它再继续：${currentNotice.message}`;
 }
 
 export async function loadBackupOverview(): Promise<BackupOverview> {
   await requireAuth();
   // 先收尾，再扫描：这样页面上的「content 文件」看到的是回滚之后的状态
-  await recoverOnce();
+  await refreshRecovery();
 
   let backups: BackupListItem[] = [];
   let files = { total: 0, notes: 0, resources: 0, tasks: 0, trash: 0 };
@@ -172,13 +184,13 @@ export async function loadBackupOverview(): Promise<BackupOverview> {
     contentRoot: contentFilesRoot(),
     backupsRoot: backupsRoot(),
     error,
-    recovery: recoveryNotice,
+    recovery: currentNotice ?? readStartupNotice(),
   };
 }
 
 export async function createBackupNow(): Promise<CreateBackupResult> {
   await requireAuth();
-  await recoverOnce();
+  await refreshRecovery();
   const blocked = recoveryBlocked();
   if (blocked) return { ok: false, error: blocked };
   return createBackup({});
@@ -197,7 +209,7 @@ export async function previewRestoreByName(
   { ok: true; plan: RestorePlan; warnings: string[]; fileCount: number } | BackupServiceFailure
 > {
   await requireAuth();
-  await recoverOnce();
+  await refreshRecovery();
   const blocked = recoveryBlocked();
   if (blocked) return fail(blocked);
   if (!isBackupFileName(name)) return fail("备份文件名不合法");
@@ -222,10 +234,18 @@ export async function applyRestoreFromForm(input: {
   if (!isBackupFileName(input.name)) {
     return { ok: false, reason: "invalid", error: "备份文件名不合法" };
   }
-  await recoverOnce();
+  await refreshRecovery();
   const blocked = recoveryBlocked();
   if (blocked) return { ok: false, reason: "io", error: blocked };
-  return applyRestore(input);
+
+  const result = await applyRestore(input);
+  // 这次恢复自己写了一份新日志并收尾：启动提示不再成立。
+  // 失败时保留（下一次 overview 会现读日志，把真实状态显示出来）。
+  if (result.ok) {
+    startupNotice = null;
+    currentNotice = null;
+  }
+  return result;
 }
 
 /**
@@ -248,9 +268,12 @@ export async function discardRestoreJournal(): Promise<{ ok: true } | BackupServ
     );
   }
 
-  // 本进程不再尝试自动收尾；提示也清掉，页面回到正常状态
-  recoveryNotice = null;
-  recoveryOnce = Promise.resolve();
+  // 日志已经删掉：当前提示与启动提示都清掉，页面回到正常状态；
+  // 下一次 refresh 会重新读日志（应该得到 none）
+  currentNotice = null;
+  startupNotice = null;
+  startupNoticeRead = true;
+  recoveryInFlight = null;
   return { ok: true };
 }
 
