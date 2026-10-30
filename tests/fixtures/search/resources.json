@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "resources": [
+    {
+      "id": "attention-paper",
+      "title": "Attention Is All You Need",
+      "url": "https://arxiv.org/abs/1706.03762",
+      "type": "paper",
+      "category": "论文",
+      "tags": ["Transformer"],
+      "description": "提出 Transformer，完全基于注意力。",
+      "articleId": "注意力机制",
+      "createdAt": "2026-10-01",
+      "updatedAt": "2026-10-03"
+    }
+  ]
+}

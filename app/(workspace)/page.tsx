@@ -8,7 +8,7 @@ const STATS = [
   { label: "知识笔记", hint: "阶段 6 接入", icon: BookOpen },
   { label: "资源收藏", hint: "阶段 4 接入", icon: Library },
   { label: "学习任务", hint: "阶段 6 接入", icon: ListChecks },
-  { label: "搜索条目", hint: "阶段 5 接入", icon: Search },
+  { label: "搜索条目", hint: "阶段 6 接入", icon: Search },
 ] as const;
 
 export const metadata: Metadata = { title: "总览" };

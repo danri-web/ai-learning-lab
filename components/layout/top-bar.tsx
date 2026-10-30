@@ -1,10 +1,11 @@
 "use client";
 
-import { Menu, Plus, Search } from "lucide-react";
+import { Menu, Plus } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { SearchCommand } from "@/components/search/search-command";
 import {
   Sheet,
   SheetContent,
@@ -18,7 +19,7 @@ import { SidebarNav } from "./sidebar-nav";
 /**
  * 顶栏：
  * - 手机端的导航抽屉（可 Esc 关闭、焦点被 Sheet 管住）
- * - 搜索仍是**禁用**的占位（阶段 5），按钮上写清哪个阶段启用，不做假功能
+ * - 搜索在阶段 5 接上了真的弹窗（Ctrl+K；手机上是图标按钮）
  * - 「新建笔记」在阶段 3b 接上了真页面
  */
 export function TopBar() {
@@ -46,27 +47,9 @@ export function TopBar() {
 
       <span className="text-sm font-semibold tracking-tight md:hidden">AI Learning Lab</span>
 
-      {/* 阶段 5 会把这里换成真的搜索弹窗（Ctrl+K） */}
-      <div className="ml-auto hidden w-full max-w-md items-center gap-2 md:ml-0 md:flex">
-        <div className="relative w-full">
-          <Search
-            aria-hidden
-            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            type="search"
-            disabled
-            placeholder="搜索笔记与资源（阶段 5 启用）"
-            aria-label="搜索（阶段 5 启用）"
-            className="h-8 w-full cursor-not-allowed rounded-md border border-input bg-surface pr-16 pl-9 text-sm text-foreground placeholder:text-muted-foreground disabled:opacity-70"
-          />
-          <kbd
-            aria-hidden
-            className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border border-border bg-elevated px-1.5 py-0.5 text-[10px] text-muted-foreground"
-          >
-            Ctrl K
-          </kbd>
-        </div>
+      {/* 阶段 5：真的搜索弹窗（Ctrl+K，手机上是图标按钮） */}
+      <div className="ml-auto flex min-w-0 flex-1 items-center gap-2 md:ml-0 md:max-w-md">
+        <SearchCommand />
       </div>
 
       <div className="ml-auto flex items-center gap-2 md:ml-0">

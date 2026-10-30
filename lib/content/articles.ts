@@ -53,7 +53,26 @@ function isHiddenName(name: string): boolean {
   return name.startsWith("_") || name.startsWith(".");
 }
 
-export async function listArticles(root = articlesRoot()): Promise<ArticleList> {
+/** 搜索用的文章源：摘要字段 + 正文（阶段 5） */
+export type ArticleSource = ArticleSummary & { body: string };
+
+export type ArticleSourceList = {
+  articles: ArticleSource[];
+  problems: ArticleProblem[];
+  missingRoot: boolean;
+};
+
+/**
+ * 扫一遍目录，拿到**含正文**的文章。
+ *
+ * `listArticles`（列表页）与 `listArticleSources`（搜索）共用这一个循环：
+ * 两处各写一遍，迟早会漂（比如只在一处跳过 `_` 前缀）。
+ */
+async function scanArticles(root: string): Promise<{
+  articles: ParsedArticle[];
+  problems: ArticleProblem[];
+  missingRoot: boolean;
+}> {
   // turbopackIgnore：正文在运行时从磁盘读（用户数据，不进产物）。
   // 不加这个注释，Turbopack 会认为"要追踪整个项目"并给出构建警告。
   let names: string[];
@@ -66,7 +85,7 @@ export async function listArticles(root = articlesRoot()): Promise<ArticleList> 
     throw error;
   }
 
-  const articles: ArticleSummary[] = [];
+  const articles: ParsedArticle[] = [];
   const problems: ArticleProblem[] = [];
 
   for (const name of names) {
@@ -82,15 +101,7 @@ export async function listArticles(root = articlesRoot()): Promise<ArticleList> 
         problems.push({ id: fileId, file: name, error: parsed.error });
         continue;
       }
-      // 显式挑字段（不用 ...rest），这样以后给 ParsedArticle 加字段时不会悄悄漏进列表
-      articles.push({
-        id: parsed.article.id,
-        title: parsed.article.title,
-        category: parsed.article.category,
-        tags: parsed.article.tags,
-        createdAt: parsed.article.createdAt,
-        updatedAt: parsed.article.updatedAt,
-      });
+      articles.push(parsed.article);
     } catch (error) {
       const message =
         error instanceof UnsafePathError ? error.message : `读取失败：${(error as Error).message}`;
@@ -103,6 +114,44 @@ export async function listArticles(root = articlesRoot()): Promise<ArticleList> 
   );
 
   return { articles, problems, missingRoot: false };
+}
+
+/**
+ * 显式挑字段（不用 ...rest），这样以后给 ParsedArticle 加字段时不会**悄悄**漏进列表：
+ * 正文（body）就不该跟着列表页飞一遍。
+ */
+function toSummary(article: ParsedArticle): ArticleSummary {
+  return {
+    id: article.id,
+    title: article.title,
+    category: article.category,
+    tags: article.tags,
+    createdAt: article.createdAt,
+    updatedAt: article.updatedAt,
+  };
+}
+
+export async function listArticles(root = articlesRoot()): Promise<ArticleList> {
+  const scanned = await scanArticles(root);
+  return {
+    articles: scanned.articles.map(toSummary),
+    problems: scanned.problems,
+    missingRoot: scanned.missingRoot,
+  };
+}
+
+/**
+ * 搜索要正文，但不该因此复制一份扫描逻辑。
+ * 注意：跳过的规则（`_` / `.` 开头、`.trash`）在 scanArticles 里，这里是同一套 ——
+ * 不存在"搜索能搜到回收站里的东西"这种独立实现。
+ */
+export async function listArticleSources(root = articlesRoot()): Promise<ArticleSourceList> {
+  const scanned = await scanArticles(root);
+  return {
+    articles: scanned.articles.map((article) => ({ ...toSummary(article), body: article.body })),
+    problems: scanned.problems,
+    missingRoot: scanned.missingRoot,
+  };
 }
 
 export type ReadResult =
