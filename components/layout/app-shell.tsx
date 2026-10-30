@@ -25,7 +25,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <SidebarNav />
           <div className="border-t border-border px-4 py-3">
             <p className="text-[11px] leading-relaxed text-muted-foreground">
-              阶段 7 · 备份 / 认证 / 局域网
+              阶段 8 · 测试与本地发布
               <br />
               Ctrl+K 搜全库；数据与备份都在这台电脑上
             </p>

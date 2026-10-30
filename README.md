@@ -2,7 +2,7 @@
 
 一个本地优先的 AI 学习、知识管理与资源收藏工作台。
 
-**当前状态：阶段 7 完成（知识库 + 资源收藏 + 全文搜索 + 学习任务与总览 + 备份恢复与局域网认证）。** 笔记能新建/编辑/删除（中文标题直接当文件名）；资源收藏能增删改、按类型/分类/标签筛选、三种排序，并能挂到某篇笔记上。链接只接受 http/https，应用**从不抓取**你填的地址。`Ctrl+K` 能搜全部笔记与资源：分组、摘要、高亮、`↑↓`/`Enter`/`Esc` 键盘操作，**不建索引**（每次搜都读文件，所以永远不会有"索引过期"）。学习任务有 Todo / 进行中 / 已完成三档、截止日期（会算逾期）、可关联多篇笔记与多条资源；总览页的数字全部从文件现算。阶段 7 把 `content/` 打成带清单的 zip（每个文件 sha256），恢复前先预览、先留快照、失败自动回滚；局域网默认关闭，打开后用口令登录，所有页面与写入都要过同一道门。
+**当前状态：阶段 1–8 全部完成（2026-10-30）。** 笔记能新建/编辑/删除（中文标题直接当文件名）；资源收藏能增删改、按类型/分类/标签筛选、三种排序，并能挂到某篇笔记上。链接只接受 http/https，应用**从不抓取**你填的地址。`Ctrl+K` 能搜全部笔记与资源：分组、摘要、高亮、`↑↓`/`Enter`/`Esc` 键盘操作，**不建索引**（每次搜都读文件，所以永远不会有"索引过期"）。学习任务有 Todo / 进行中 / 已完成三档、截止日期（会算逾期）、可关联多篇笔记与多条资源；总览页的数字全部从文件现算。阶段 7 把 `content/` 打成带清单的 zip（每个文件 sha256），恢复前先预览、先留快照、失败自动回滚；局域网默认关闭，打开后用口令登录，所有页面与写入都要过同一道门。阶段 8 补上了 Playwright 端到端测试（系统 Chrome；Windows 桌面 + Pixel 7 模拟）、axe 可访问性扫描（WCAG 2 A/AA，九个界面 0 命中）、性能基线、备份恢复的完整 E2E，以及 `app/error.tsx` 错误边界。**交付门槛是 `npm run verify`（450 条断言）加 `npm run test:e2e`。**
 
 ![总览](docs/screenshot-dashboard.png)
 
@@ -25,6 +25,8 @@
 ![设置](docs/screenshot-settings.png)
 
 ![手机登录](docs/screenshot-mobile-login.png)
+
+![错误边界](docs/screenshot-error-boundary.png)
 
 > 完整需求、验收标准与八阶段路线在 **[docs/需求书.md](docs/需求书.md)**（原始需求书，内容保持原样）。
 
@@ -101,6 +103,21 @@ New-NetFirewallRule -DisplayName "AI Learning Lab" -Direction Inbound -Protocol 
 
 环境：Windows 10 + Node.js 24.21 + npm 11.19（实测版本）。环境变量示例见 `.env.example`，复制为 `.env.local` 后修改。
 
+### 重新安装 / 换一台电脑 / 从备份恢复数据
+
+`content/` **不在仓库里**（D5：主仓库是公开的，笔记属于你自己的私有仓库），所以新 clone 下来笔记列表是空的 —— 这是预期，不是 bug。要把数据搬过来：
+
+1. 装 Node.js 24 / npm 11、Git；Windows 上再装 Chrome（E2E 用系统 Chrome，不下载 Chromium）
+2. `git clone https://github.com/danri-web/ai-learning-lab.git` → `cd ai-learning-lab` → `npm ci`
+3. 把之前备份的 `ai-lab-<时间戳>.zip` 放进 `backups/`（没有这个目录就新建；它已 gitignore）
+4. `npm run build`，再 `npm run start`，打开 <http://127.0.0.1:3000>
+5. 进 `/backup` → 对那份 zip 点 **预览恢复** → 看「新增 / 覆盖」→ 勾选确认框、输入「恢复」→ **执行恢复**。
+   应用会先建 `pre-restore` 快照，再预检、原子写入、重扫校验；中途失败自动回滚
+6. 打开 `/knowledge`、`/resources`、`/learning` 确认数据回来了
+
+> 备份是**明文 zip**（含全部笔记），别放公开同步盘。新机器上建议先恢复再写新内容，避免「两边都有改动」。
+> 这条流程在 2026-10-30 用 `_scratch/release-check` 的干净副本实测过（见下面「阶段 8」）。
+
 ## 已实现的脚本
 
 ```powershell
@@ -111,16 +128,77 @@ npm run start:lan    # 局域网模式（生产构建 + 强制口令；先 build
 npm run auth:set-password # 设置/重置局域网口令（写 scrypt 哈希到 .env.local）
 npm run lint         # ESLint 9
 npm run typecheck    # next typegen && tsc --noEmit
-npm run test         # Vitest
+npm run test         # Vitest（单元 / 集成 / 源码闸门）
 npm run test:watch   # Vitest 监听
+npm run test:e2e     # Playwright 端到端（系统 Chrome；自动起隔离副本）
+npm run test:e2e:headed # 同上，带界面（调 UI 时用）
 npm run verify       # 四条一起：typecheck → lint → test → build
 npm run format       # Prettier 写入
 npm run format:check # Prettier 只检查
 ```
 
-`npm run verify` 是交付前的一条命令闸门：四步任一失败就停下；它不跑 `publish-check`（那是工作区脚本，见交接 §5）。
+`npm run verify` 是交付前的一条命令闸门：四步任一失败就停下；它不跑 `publish-check`（那是工作区脚本，见交接 §5），也不跑端到端（E2E 要起服务，慢且会写测试数据，单独一条命令，见下面「测试与发布」）。
 
-端到端测试（Playwright）尚未提供，按需求书放在阶段 8 —— 所以这里没有 `test:e2e` 脚本，避免出现「看起来有、跑就报错」的假入口。
+## 测试与发布（阶段 8）
+
+交付门槛是两条命令：`npm run verify`（**450 条断言：449 通过 + 1 跳过**，跳过的是本机建不出的文件级符号链接）和 `npm run test:e2e`（Playwright）。端到端**不在 `verify` 里**：它要起服务、会改测试数据、单轮约 2.5 分钟，塞进每次提交会让人开始跳过闸门。
+
+### 端到端测试怎么隔离数据
+
+E2E 会新建/编辑/删除笔记、建备份、真的执行恢复 —— 这些只能发生在一次性副本里：
+
+- `scripts/e2e-server.mjs` 先把**当前工作树**（含未提交改动）复制到系统临时目录，再复制 `node_modules`（Windows 用 `robocopy /MT`，36k 文件约 6 秒；Turbopack 不接受指向工作区外的目录联接，实测会报「Could not find the Next.js package」）
+- 用 `e2e/fixtures/content/` 覆盖副本的 `content/`：2 篇夹具笔记（含中文 id）、2 条资源、2 条任务
+- **安全闸门**：副本路径落在仓库里时脚本直接退出（`tests/e2e-safety.test.ts` 用真进程撞过这条）；端口固定 **3210（本机）/ 3211（局域网模式）**，不碰真实 dev 的 3000
+- 3211 用 `ALLOW_LAN=1` + 测试口令 + 随机 `SESSION_SECRET` 起第二个实例，专门验认证
+- 想改测试时用 `E2E_REUSE=1 npm run test:e2e`（复用上次副本与构建，省掉 70 秒构建）；`E2E_SCRATCH=<dir>` 可以指定副本位置
+
+### 测什么
+
+| 用例 | 平台 | 内容 |
+| --- | --- | --- |
+| `00-smoke` | Windows + Pixel 7 | 总览真实数字、五页导航、404 有出口、**无浏览器错误**、390–412px 不横向溢出 |
+| `10-notes` | Windows | 新建（中文标题 → 中文文件名）→ 编辑 → `Ctrl+K` 搜到 → 删除进回收站 |
+| `20-resources-tasks` | Windows | `javascript:` 链接被服务端拒绝；合法链接收藏/删除；任务新建、列表改状态、删除；**校验失败后 select/radio 不被清空**（回归） |
+| `30-backup-restore` | Windows | 改笔记 → 备份 → 再改 → 预览 → 确认恢复 → 内容回退 → 对 `pre-restore` 快照回滚 |
+| `40-auth` | Windows（3211） | 未登录页面 307、action POST 401、错误口令提示、登录后能读、登出后回到 307 |
+| `50-a11y` | Windows | axe 扫 7 个页面 + 搜索弹窗 + 登录页（WCAG 2 A/AA） |
+| `60-perf` | Windows | 五个页面的 Navigation Timing + 搜索弹窗里的真实毫秒数 |
+
+> Pixel 7 只跑冒烟（导航、布局、控制台错误）：真机 Android 已在 2026-10-30 用 iQOO Z11 Turbo / originOS 6 完整验过（登录、五页、笔记闭环、搜索、资源/任务、备份、390px），E2E 不再假装覆盖真机。
+
+### 可访问性
+
+`@axe-core/playwright` 扫 WCAG 2 A/AA，**只把 critical / serious 当失败**（moderate / minor 会打印出来，但本地单用户应用里有一批评分标准意义不大，见 ADR D14）。2026-10-30 结果：**九个界面全部 0 命中**。修掉的两个真问题：搜索按钮的 `aria-label` 与可见文本不一致（2.5.3）、设置页把按钮直接塞进 `<dl>`（`definition-list`）。
+
+### 性能基线（2026-10-30，Windows 10 / Node 24.21 / 系统 Chrome 156）
+
+同一天跑了两次，数字会波动，所以给范围而不是单次快照：
+
+| 页面 | DOMContentLoaded | load |
+| --- | --- | --- |
+| 总览 | 90–231 ms | 231–258 ms |
+| 知识库 | 81–88 ms | 86–93 ms |
+| 资源收藏 | 68–89 ms | 116–138 ms |
+| 学习任务 | 149–170 ms | 159–180 ms |
+| 备份 | 146–237 ms | 154–246 ms |
+
+搜索（2 篇笔记 / 2 条资源，扫盘 + 解析 + 匹配）：**4.2–4.8 ms**（界面上显示的数字，和用户看到的一致）。阈值定得很宽（页面 3s、搜索 500ms），要抓的是"某次改动把页面拖成几秒"，不是微基准。
+
+### 阶段 8 抓到的三个真问题
+
+| # | 问题 | 怎么发现的 | 修法 | 回归 |
+| --- | --- | --- | --- | --- |
+| 1 | **校验失败后 `<select>` / 单选框看起来被清空**（React 19 在 form action 后 reset 表单；text input 会被写回，select/radio 的 value 没变就不重写 DOM） | E2E 填 `javascript:` 链接提交后，断言"类型仍是工具"直接红；单独探针确认 state 其实还在 | 失败后把 DOM 同步回组件 state（只操作 DOM，不 setState） | 资源：断言类型仍为 `tool`；任务：先空标题提交一次，断言「进行中」仍选中 |
+| 2 | 搜索按钮 `aria-label` 与可见文本不一致（WCAG 2.5.3 serious） | axe | 去掉 `aria-label`，用 `sr-only md:not-sr-only` 文本，手机也有可访问名称 | `50-a11y` |
+| 3 | 设置页 `<dl>` 里直接放了按钮 | axe `definition-list` | `Section` 加 `footer`，按钮移出 `<dl>` | `50-a11y` |
+
+### 刻意不做的
+
+- **不做截图对比**：界面还在演进，像素级红是噪音；布局回归靠"不横向溢出"这条真实断言
+- **不跑 Lighthouse**：它测的是公网/首屏场景，本地单用户应用的数字没有决策价值；性能只看真实页面的 Navigation Timing
+- **不测 Firefox / Safari**：需求书范围是 Windows + Android；多一套浏览器 = 多一份维护，等真有用户再说
+- **不进 CI**：这是本地优先的单机项目，没有 CI 服务；`verify` + `test:e2e` 就是本机闸门
 
 ## 技术栈
 
@@ -129,7 +207,7 @@ npm run format:check # Prettier 只检查
 | 框架 | Next.js 16.4.3（App Router、Turbopack） |
 | UI | React 19.3、Tailwind CSS 4、shadcn/ui（`radix-nova`）、Lucide |
 | 语言 | TypeScript 5（`strict: true`） |
-| 测试 | Vitest 5 |
+| 测试 | Vitest 5（单元 / 集成 / 源码闸门）；Playwright 1.64（E2E，系统 Chrome）；@axe-core/playwright 4.14（可访问性） |
 | 格式化 | Prettier 3 |
 | 搜索 | 直接扫 `content/` + 纯函数子串匹配（**无索引**，见 [docs/架构决策.md](docs/架构决策.md) D6 / D10） |
 | 备份 | `yazl` / `yauzl` 读写 zip；manifest + 每文件 sha256 自检（D12） |
@@ -158,8 +236,10 @@ lib/security/      文章 id 规则、路径闸门、资源 URL 白名单、会�
                    访问配置（auth-config）、登录限速、备份条目闸门（backup-entry）
 lib/fs/            原子写入（临时文件 + fsync + rename）、进程内写锁
 proxy.ts           每个请求的第一道门（局域网认证 / 本机绑定 fail closed）
-scripts/           auth-lib / set-password / start-lan / env-file
-tests/             Vitest 单元测试（444 条，其中 1 条在本机会 skipped）
+scripts/           auth-lib / set-password / start-lan / env-file / e2e-server（隔离副本）
+e2e/               Playwright 用例、共享断言、fixtures（假笔记/资源/任务，不进 content/）
+playwright.config.ts  两个 project（Windows Chrome / Pixel 7）+ 自动起隔离服务
+tests/             Vitest 单元测试（450 条，其中 1 条在本机会 skipped）
 docs/              需求书、架构决策、截图
 backups/           备份 zip（gitignored；明文，别放公开同步盘）
 public/            静态资源
@@ -179,7 +259,7 @@ public/            静态资源
 | 5 | 全文搜索 | ✅ 2026-10-30 |
 | 6 | 学习任务与 Dashboard | ✅ 2026-10-30 |
 | 7 | 备份、安全与局域网访问 | ✅ 2026-10-30 |
-| 8 | 测试与本地发布 | ⬜ 未开始 |
+| 8 | 测试与本地发布 | ✅ 2026-10-30 |
 
 ### 阶段 2 具体做了什么
 
@@ -321,7 +401,7 @@ public/            静态资源
 - **三道门**：`proxy.ts` 每个请求先过（页面、RSC、action POST 都算）→ `(workspace)/layout.tsx` 的 `requirePageAuth()` → 每个 Server Action / 受保护 Route Handler 里的 `requireAuth()`。这样「页面拦了、action 没拦」不会发生
 - **fail closed**：局域网模式配置不齐 → 503 说明页；本机模式发现非本机 Host（有人绕过脚本手动绑 `0.0.0.0`）→ 503，不假装安全
 - **Windows / Android**：README 上面给了 `auth:set-password` → `build` → `start:lan` 的步骤和**只放行专用网络**的防火墙命令；手机连同一 Wi-Fi，用终端打印的局域网 IP 访问
-- **真机 Android（2026-10-30）**：iQOO Z11 Turbo / originOS 6，P40 开热点；登录、五页、笔记新增/编辑/删除、搜索、资源/任务、备份建/校验/预览、登出/后退、390px 布局全部通过。第一次连不上是 Windows 防火墙里 `D:\tools\nodejs\node.exe` 的 **Block** 规则（阻止优先于允许），删掉后即通；不是应用问题
+- **真机 Android（2026-10-30）**：iQOO Z11 Turbo / originOS 6，P40 开热点；登录、五页、笔记新增/编辑/删除、搜索、资源/任务、备份建/校验/预览、登出/后退、390px 布局全部通过。第一次连不上是 Windows 防火墙里 `node.exe`（Node 安装目录里的那个）的 **Block** 规则（阻止优先于允许），删掉后即通；不是应用问题
 
 **断言与实测**
 
@@ -347,5 +427,40 @@ public/            静态资源
 | F2 | 资源/任务先删活动 JSON、再追加 `.trash`；第二步失败时记录已经没了 | 把 `.trash` 做成普通文件：删除返回失败，但 `resources.json` / `tasks.json` 已空 | 先写 `.trash`，再写活动 JSON；活动写失败时撤回刚追加的行 | 4 条：两个 store ×（trash 写失败 / 活动写失败） |
 | F3 | 登录限速按 `X-Forwarded-For` 分桶，换头可绕过 5 次锁 | 源码：`clientKey` 读客户端可改的转发头 | 全局桶，不读转发头；代价是攻击者可故意失败锁住房主 5 分钟（D13） | 路由级：5 次不同 XFF 第 6 次被锁，且不再验口令 |
 
-> 断言 437 → **444**；`npm run verify` 全绿。F3 的回归是路由级（POST 5 次不同 XFF，第 6 次被锁且不再验口令），
-> 真机 LAN 发请求放到阶段 8 的 E2E 里补。
+> 断言 437 → **444**；`npm run verify` 全绿。F3 的回归当时只有单元级（POST 5 次不同 XFF，第 6 次被锁且不再验口令）；
+> 阶段 8 补上了真打局域网实例的 E2E（未登录 307 / action POST 401 / 登录 / 登出，见下面 `40-auth`）。
+
+### 阶段 8 具体做了什么（测试与本地发布）
+
+- **端到端（Playwright 1.64 + 系统 Chrome，不下载 Chromium）**：两个 project —— Windows 桌面 1440×900、Pixel 7（412×915 触摸）；7 个 spec，设计上 13 条实跑 + 7 条跳过（写入/认证/a11y/性能只在桌面跑，Pixel 7 只做冒烟）
+- **数据隔离**：`scripts/e2e-server.mjs` 把工作树复制到临时目录、用固定夹具覆盖 `content/`、复制 node_modules、起 3210（本机）与 3211（`ALLOW_LAN=1`）两个生产实例。真实 `content/` 一行没动；副本落在仓库里时脚本直接拒绝（`tests/e2e-safety.test.ts` 用真进程撞过）
+- **真实恢复闭环**：改夹具 → 备份（自检）→ 再改 → 预览 → 确认 → 内容回退 → 对自动生成的 `pre-restore` 快照点「回滚」→ 回到恢复前。没有拿任何真实笔记当实验品
+- **局域网认证的真实请求**：未登录页面 307、action POST 401、body 不含笔记标题；错误口令有提示；正确口令登录后能读到夹具；登出后同一浏览器再访问回到 307。审计 v4 留的「F3 真机请求」在这里补上
+- **可访问性**：axe 扫 7 个页面 + 搜索弹窗 + 登录页（WCAG 2 A/AA），**九个界面 0 命中**；修掉搜索按钮的 2.5.3 与设置页的 `definition-list`
+- **性能**：五个页面 DOMContentLoaded 68–237 ms（同日两次运行），搜索 4.2–4.8 ms（2 篇笔记 / 2 条资源）
+- **错误边界**：新增 `app/error.tsx`（`"use client"`、重试 + 回总览、不 import 服务端组件/fs）。为了证明它真接得住，在 `_scratch` 副本的 `/learning` 里故意 `throw`、重新构建后截图 —— **真实仓库里没有这行抛错代码**；桌面与 390px 两张截图在 `docs/`
+- **重装/恢复演练**：在 `_scratch/release-check` 的干净副本里按 README 走
+  `git clone（HEAD）→ npm ci（771 包，约 1 分钟）→ 放手机测试备份 zip → build → start →`
+  `/backup 预览（新增 7 / 覆盖 0）→ 执行恢复 → 2 篇笔记 + 资源 + 任务都回来`；
+  干净副本里再跑一遍 Vitest 也全过
+- **断言**：444 → **450**（449 通过 + 1 skipped）。新增 `tests/error-boundary.test.ts` 3 条、`tests/e2e-safety.test.ts` 3 条；E2E 单独一条命令，不进 `verify`
+- **实测踩到的坑**：① Turbopack 以最近的 lockfile 当工作区根，**不接受指向工作区外的 node_modules 目录联接**（`Could not find the Next.js package`）→ 改成 robocopy 真实复制；② React 19 在 form action 后 reset 表单，`<select>`/radio 的 value 没变时不会写回 DOM → 校验失败后控件看起来被清空（已修 + E2E 回归）；③ Next 的路由播报器也是 `role="alert"`，E2E 取 alert 必须收窄；④ 404 页的主文档本身会记一条 console error，不能和"脚本报错"混在一起断言；⑤ Pixel 7 设备档 + 系统 Chrome 要用 `channel: "chrome"`，否则会去找没下载的 Chromium
+
+## 已知问题（2026-10-30）
+
+"已知"= 知道、记录、暂不修；完整清单在 [docs/架构决策.md](docs/架构决策.md) 的「残余风险登记」，这里是发布相关的高频项：
+
+| 问题 | 现状 / 影响 |
+| --- | --- |
+| 错误边界只覆盖根布局以下 | 根布局自己抛错没有被 `app/error.tsx` 接住（要 `global-error.tsx`）；正常使用碰不到，但不要假装全覆盖 |
+| 可访问性只有自动扫描 | axe 覆盖不了读屏体验与真实键盘流程（搜索弹窗的键盘逻辑有单元/手测，但没有屏幕阅读器测试）；中文输入法组字期间的回车仍待人工确认 |
+| 文件级符号链接的写入防护 | 本机建不出文件级 symlink，对应用例显示 **skipped**（1 条）；在能建的机器上会自动执行。看报告要数 skipped，不能只看绿色 |
+| 局域网是 HTTP、不加密 | 只在可信 Wi-Fi 用，不做端口转发；CSP 也还没启用（Next 内联启动脚本需要 nonce，见 D12） |
+| 备份是明文 zip、不自动清理 | `backups/` 会一直长；别放公开同步盘，需要时手动删旧备份 |
+| 恢复只从 `backups/` 列表选 | 从 U 盘/另一台机器恢复要先手动把 zip 放进 `backups/`（有意为之：不接受上传，攻击面最小） |
+| 跨进程并发写 | 进程内已串行（D8）；两个 `next dev` / 另跑 CLI 写同一目录仍是残余窗口 |
+| E2E 的边界 | 写入流程只在 Windows project 跑，Pixel 7 只做冒烟；不做截图对比、Lighthouse、Firefox/Safari；不进 CI（本地单机项目） |
+| 单条删除没有可视化回收站 | 笔记进 `content/articles/.trash/`、资源/任务进 `content/.trash/*.jsonl`；整库可用 `pre-restore` 快照回滚，单条要手工贴回（D12 定案） |
+| `npm audit` 有 9 个告警、暂无修复 | 7 low 来自 `katex`/`rehype-katex`（渲染本地 Markdown 的公式），2 moderate 来自 `@tailwindcss/typography` 里的 `postcss-selector-parser`；都标了 no fix available。应用不渲染用户 HTML、也不接受外部上传，风险面限于自己写的笔记；升级依赖时重新评估 |
+| 任务没有完成时间 / 不提醒 | 总览只统计完成几条，没有"本周完成"；逾期只在页面标红，不弹窗不发邮件 |
+| `.trash/` 会进那个私有 git 仓库 | 删除 = 多一个被跟踪文件，历史只增不减；与备份的"恢复"是两套语义 |

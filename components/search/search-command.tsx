@@ -226,11 +226,15 @@ export function SearchCommand() {
       <button
         type="button"
         onClick={() => handleOpenChange(true)}
-        aria-label="搜索笔记与资源（Ctrl+K）"
         className="relative flex h-8 w-9 shrink-0 items-center justify-center gap-2 rounded-md border border-input bg-surface text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring md:w-full md:justify-start md:px-3"
       >
         <Search aria-hidden className="size-4 shrink-0" />
-        <span className="hidden truncate md:inline">搜索笔记与资源</span>
+        {/*
+          不用 aria-label：可见文本是「搜索笔记与资源 Ctrl K」，而 aria-label 只写「搜索笔记与资源（Ctrl+K）」
+          被 axe 判成 label-content-name-mismatch（WCAG 2.5.3，serious）。
+          改成 sr-only 文本：手机上也有可访问名称，桌面上的可见文本与名称一致。
+        */}
+        <span className="sr-only md:not-sr-only md:truncate">搜索笔记与资源</span>
         <kbd
           aria-hidden
           className="absolute top-1/2 right-2 hidden -translate-y-1/2 rounded border border-border bg-elevated px-1.5 py-0.5 text-[10px] md:block"

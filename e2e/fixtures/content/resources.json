@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "resources": [
+    {
+      "id": "E2E-论文-Attention",
+      "title": "E2E 论文：Attention Is All You Need",
+      "url": "https://arxiv.org/abs/1706.03762",
+      "type": "paper",
+      "category": "测试夹具",
+      "tags": ["E2E", "Transformer"],
+      "description": "端到端测试的固定夹具，不是真实收藏",
+      "articleId": "E2E-基线笔记",
+      "createdAt": "2026-01-05",
+      "updatedAt": "2026-01-05"
+    },
+    {
+      "id": "E2E-视频-教程",
+      "title": "E2E 视频：注意力机制讲解",
+      "url": "https://example.com/e2e-video",
+      "type": "video",
+      "category": "测试夹具",
+      "tags": ["E2E", "视频"],
+      "description": "用来验证筛选与删除的假资源",
+      "createdAt": "2026-01-06",
+      "updatedAt": "2026-01-06"
+    }
+  ]
+}

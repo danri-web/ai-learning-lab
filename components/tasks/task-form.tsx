@@ -1,8 +1,8 @@
-"use client";
+﻿"use client";
 
 import { cn } from "cn";
 import { Save, TriangleAlert } from "lucide-react";
-import { useActionState, useEffect, useId, useMemo, useState } from "react";
+import { useActionState, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
@@ -117,6 +117,27 @@ export function TaskForm({ mode, action, initial, articles, resources }: Props) 
   const [articleIds, setArticleIds] = useState(initial?.articleIds ?? []);
   const [resourceIds, setResourceIds] = useState(initial?.resourceIds ?? []);
 
+  /**
+   * React 19 在 action 结束后会 reset 表单。text input 会被 React 写回，
+   * 但 radio / checkbox 的 checked prop 没变时 React 不重写 DOM —— 校验失败后
+   * 「进行中」看起来退回「待办」、关联勾选看起来丢了（state 其实还在）。
+   * 2026-10-30 的 E2E 抓到。这里把 DOM 同步回 state：只操作 DOM，不 setState。
+   */
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    const form = formRef.current;
+    if (state.status !== "error" || !form) return;
+    form.querySelectorAll<HTMLInputElement>('input[name="status"]').forEach((input) => {
+      input.checked = input.value === status;
+    });
+    form.querySelectorAll<HTMLInputElement>('input[name="articleIds"]').forEach((input) => {
+      input.checked = articleIds.includes(input.value);
+    });
+    form.querySelectorAll<HTMLInputElement>('input[name="resourceIds"]').forEach((input) => {
+      input.checked = resourceIds.includes(input.value);
+    });
+  }, [state, status, articleIds, resourceIds]);
+
   const dirty = useMemo(() => {
     if (mode === "create") {
       return Boolean(title || dueDate || note || articleIds.length || resourceIds.length);
@@ -150,7 +171,7 @@ export function TaskForm({ mode, action, initial, articles, resources }: Props) 
   }
 
   return (
-    <form action={formAction} className="grid max-w-3xl gap-4">
+    <form ref={formRef} action={formAction} className="grid max-w-3xl gap-4">
       {mode === "edit" && initial ? (
         <>
           <input type="hidden" name="id" value={initial.id} />

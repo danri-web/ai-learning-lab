@@ -40,11 +40,21 @@ function Row({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+  footer,
+}: {
+  title: string;
+  children: React.ReactNode;
+  /** `<dl>` 里只能放 dt/dd（或包着它们的 div）；按钮要放在 dl 外面，否则 axe 报 definition-list */
+  footer?: React.ReactNode;
+}) {
   return (
     <section className="mt-6">
       <h2 className="text-sm font-medium">{title}</h2>
       <dl className="mt-2 overflow-hidden rounded-lg border border-border bg-surface">{children}</dl>
+      {footer ? <div className="mt-2">{footer}</div> : null}
     </section>
   );
 }
@@ -132,7 +142,17 @@ export default async function SettingsPage() {
         ) : null}
       </Section>
 
-      <Section title="备份与恢复">
+      <Section
+        title="备份与恢复"
+        footer={
+          <Button asChild size="sm">
+            <Link href="/backup">
+              <ShieldCheck aria-hidden />
+              打开备份与恢复
+            </Link>
+          </Button>
+        }
+      >
         <Row
           label="最近一次"
           value={latest ? latest.name : "还没有备份"}
@@ -153,14 +173,6 @@ export default async function SettingsPage() {
           value="在备份页对 pre-restore-* 点「回滚」"
           note="快照与普通备份同格式，能校验、能下载、能再恢复。"
         />
-        <div className="px-4 py-3">
-          <Button asChild size="sm">
-            <Link href="/backup">
-              <ShieldCheck aria-hidden />
-              打开备份与恢复
-            </Link>
-          </Button>
-        </div>
       </Section>
 
       <Section title="外观">
@@ -193,7 +205,8 @@ export default async function SettingsPage() {
             记在 ADR 残余风险）。
           </p>
           <p>
-            文档：<code>docs/架构决策.md</code>（D1–D12）、<code>README.md</code> 的阶段表与启动说明。
+            文档：<code>docs/架构决策.md</code>（D1–D14）、<code>README.md</code> 的阶段表、「测试与发布」与
+            「已知问题」；闸门是 <code>npm run verify</code> + <code>npm run test:e2e</code>。
           </p>
         </div>
       </details>

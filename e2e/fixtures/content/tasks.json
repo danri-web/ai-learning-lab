@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "E2E-逾期任务",
+      "title": "E2E 逾期任务（2020 年就到期）",
+      "status": "doing",
+      "dueDate": "2020-01-01",
+      "note": "固定夹具：用来验证逾期只在展示层计算，且已完成不喊逾期",
+      "articleIds": ["E2E-基线笔记"],
+      "resourceIds": ["E2E-论文-Attention"],
+      "createdAt": "2026-01-05",
+      "updatedAt": "2026-01-05"
+    },
+    {
+      "id": "E2E-待办任务",
+      "title": "E2E 待办任务（没有截止日期）",
+      "status": "todo",
+      "note": "固定夹具：没有截止日期的任务不是坏任务",
+      "articleIds": [],
+      "resourceIds": [],
+      "createdAt": "2026-01-06",
+      "updatedAt": "2026-01-06"
+    }
+  ]
+}

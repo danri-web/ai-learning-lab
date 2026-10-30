@@ -2,7 +2,7 @@
 
 import { cn } from "cn";
 import { Save, TriangleAlert } from "lucide-react";
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,20 @@ export function ResourceForm({ mode, action, initial, articles }: Props) {
   const [tags, setTags] = useState((initial?.tags ?? []).join(", "));
   const [description, setDescription] = useState(initial?.description ?? "");
   const [articleId, setArticleId] = useState(initial?.articleId ?? "");
+
+  /**
+   * React 19 会在 form action 结束后 reset 表单。text input / textarea 会被 React 写回，
+   * 但 `<select>` 的 value prop 没变时 React 不会重新写 DOM —— 结果是「校验失败后类型看起来被清空了」，
+   * 而 state 其实还在（再改别的字段就会恢复）。2026-10-30 的 E2E 抓到（README 阶段 8）。
+   * 这里把 DOM 同步回组件 state：只操作 DOM，不 setState，避免级联渲染。
+   */
+  const typeRef = useRef<HTMLSelectElement>(null);
+  const articleRef = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    if (state.status !== "error") return;
+    if (typeRef.current) typeRef.current.value = type;
+    if (articleRef.current) articleRef.current.value = articleId;
+  }, [state, type, articleId]);
 
   const dirty = useMemo(() => {
     if (mode === "create") {
@@ -188,6 +202,7 @@ export function ResourceForm({ mode, action, initial, articles }: Props) {
           </label>
           <select
             id="type"
+            ref={typeRef}
             name="type"
             value={type}
             onChange={(event) => setType(event.target.value)}
@@ -268,6 +283,7 @@ export function ResourceForm({ mode, action, initial, articles }: Props) {
         </label>
         <select
           id="articleId"
+          ref={articleRef}
           name="articleId"
           value={articleId}
           onChange={(event) => setArticleId(event.target.value)}
