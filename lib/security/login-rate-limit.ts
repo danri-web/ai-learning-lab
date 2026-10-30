@@ -7,11 +7,15 @@
  * 进程内 Map 的已知边界（写进 ADR 残余风险）：
  *   - 重启进程就清空
  *   - 多进程/多实例不共享（本项目只跑一个 next start）
+ *
+ * 审计 v5 的 SEC-03：只 `check` 不占位时，100 个并发请求都能在第一次失败落账前
+ * 通过准入、一起跑 scrypt。现在用 `beginAttempt` **先占坑**（pending），
+ * 失败/成功后再结算；同一时刻最多 maxAttempts 个在飞。
  */
 
 export type RateLimitDecision = { allowed: true } | { allowed: false; retryAfterSeconds: number };
 
-type Entry = { count: number; firstAt: number; lockedUntil: number };
+type Entry = { count: number; firstAt: number; lockedUntil: number; pending: number };
 
 export type RateLimitOptions = {
   maxAttempts?: number;
@@ -34,6 +38,7 @@ export class LoginRateLimiter {
     this.now = options.now ?? Date.now;
   }
 
+  /** 只读预检：不占坑。用于“还没读请求体，先看桶是不是已经锁了” */
   check(key: string): RateLimitDecision {
     this.prune();
     const entry = this.entries.get(key);
@@ -49,6 +54,36 @@ export class LoginRateLimiter {
       return { allowed: true };
     }
 
+    if (entry.count + entry.pending >= this.maxAttempts) {
+      return { allowed: false, retryAfterSeconds: 1 };
+    }
+
+    return { allowed: true };
+  }
+
+  /**
+   * 占一个坑（在 scrypt 之前调用）。返回 allowed 后，调用方**必须**在
+   * 成功/失败路径各结算一次（recordSuccess / recordFailure），否则这个坑会一直占着。
+   */
+  beginAttempt(key: string): RateLimitDecision {
+    this.prune();
+    const now = this.now();
+    let entry = this.entries.get(key);
+
+    if (!entry || now - entry.firstAt > this.windowMs) {
+      entry = { count: 0, firstAt: now, lockedUntil: 0, pending: 0 };
+      this.entries.set(key, entry);
+    }
+
+    if (entry.lockedUntil > now) {
+      return { allowed: false, retryAfterSeconds: Math.ceil((entry.lockedUntil - now) / 1000) };
+    }
+
+    if (entry.count + entry.pending >= this.maxAttempts) {
+      return { allowed: false, retryAfterSeconds: 1 };
+    }
+
+    entry.pending += 1;
     return { allowed: true };
   }
 
@@ -56,13 +91,15 @@ export class LoginRateLimiter {
     const now = this.now();
     const entry = this.entries.get(key);
     if (!entry || now - entry.firstAt > this.windowMs) {
-      this.entries.set(key, { count: 1, firstAt: now, lockedUntil: 0 });
+      this.entries.set(key, { count: 1, firstAt: now, lockedUntil: 0, pending: 0 });
       return;
     }
 
+    if (entry.pending > 0) entry.pending -= 1;
     entry.count += 1;
     if (entry.count >= this.maxAttempts) {
       entry.lockedUntil = now + this.lockMs;
+      entry.pending = 0;
     }
   }
 
@@ -79,6 +116,7 @@ export class LoginRateLimiter {
   private prune(): void {
     const now = this.now();
     for (const [key, entry] of this.entries) {
+      if (entry.pending > 0) continue;
       const expired =
         entry.lockedUntil === 0
           ? now - entry.firstAt > this.windowMs

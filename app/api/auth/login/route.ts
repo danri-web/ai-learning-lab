@@ -8,6 +8,11 @@ import {
 } from "@/lib/security/auth-config";
 import { loginRateLimitKey, loginRateLimiter } from "@/lib/security/login-rate-limit";
 import { verifyPassword } from "@/lib/security/password";
+import {
+  LOGIN_BODY_MAX_BYTES,
+  isFormContentType,
+  readBodyWithLimit,
+} from "@/lib/security/request-body";
 import { SESSION_COOKIE, sessionCookieOptions, signSession } from "@/lib/security/session";
 
 /**
@@ -26,6 +31,12 @@ function redirect(request: Request, path: string): NextResponse {
   return NextResponse.redirect(new URL(path, origin), 303);
 }
 
+function rateLimited(request: Request, retryAfterSeconds: number): NextResponse {
+  const response = redirect(request, "/login?error=rate");
+  response.headers.set("Retry-After", String(retryAfterSeconds));
+  return response;
+}
+
 export async function POST(request: Request): Promise<NextResponse> {
   const config = readAuthConfig();
 
@@ -36,11 +47,40 @@ export async function POST(request: Request): Promise<NextResponse> {
     return redirect(request, "/login?error=origin");
   }
 
-  let form: FormData;
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!isFormContentType(contentType)) {
+    return redirect(request, "/login?error=wrong");
+  }
+
+  // 先只读预检，桶已锁就直接回去，不读请求体（SEC-02）
+  const rateKey = loginRateLimitKey();
+  const precheck = loginRateLimiter.check(rateKey);
+  if (!precheck.allowed) {
+    return rateLimited(request, precheck.retryAfterSeconds);
+  }
+
+  // 在流上限制字节数：Content-Length 可以撒谎，chunked 也可以没有它
+  let body: ArrayBuffer | null;
   try {
-    form = await request.formData();
+    body = await readBodyWithLimit(request, LOGIN_BODY_MAX_BYTES);
   } catch {
     return redirect(request, "/login?error=wrong");
+  }
+  if (!body) return redirect(request, "/login?error=wrong");
+
+  let form: FormData;
+  try {
+    form = await new Response(body, {
+      headers: { "content-type": contentType },
+    }).formData();
+  } catch {
+    return redirect(request, "/login?error=wrong");
+  }
+
+  // 读到表单后再占坑，然后才跑 scrypt：并发请求最多 maxAttempts 个在飞（SEC-03）
+  const admission = loginRateLimiter.beginAttempt(rateKey);
+  if (!admission.allowed) {
+    return rateLimited(request, admission.retryAfterSeconds);
   }
 
   const rawPassword = form.get("password");
@@ -49,22 +89,19 @@ export async function POST(request: Request): Promise<NextResponse> {
     typeof form.get("next") === "string" ? (form.get("next") as string) : null,
   );
 
-  // 全局桶：不读客户端可改的 X-Forwarded-For / X-Real-IP（审计 v4 F3）
-  const rateKey = loginRateLimitKey();
-  const decision = loginRateLimiter.check(rateKey);
-  if (!decision.allowed) {
-    const response = redirect(request, "/login?error=rate");
-    response.headers.set("Retry-After", String(decision.retryAfterSeconds));
-    return response;
-  }
-
   if (password.length === 0 || password.length > 1024) {
     loginRateLimiter.recordFailure(rateKey);
     return redirect(request, `/login?error=wrong&next=${encodeURIComponent(next)}`);
   }
 
   const stored = process.env.LAB_PASSWORD_HASH ?? "";
-  const valid = await verifyPassword(password, stored);
+  let valid: boolean;
+  try {
+    valid = await verifyPassword(password, stored);
+  } catch {
+    loginRateLimiter.recordFailure(rateKey);
+    return redirect(request, `/login?error=wrong&next=${encodeURIComponent(next)}`);
+  }
   if (!valid) {
     loginRateLimiter.recordFailure(rateKey);
     return redirect(request, `/login?error=wrong&next=${encodeURIComponent(next)}`);

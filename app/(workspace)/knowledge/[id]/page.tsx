@@ -9,12 +9,29 @@ import { Button } from "@/components/ui/button";
 import { readArticle } from "@/lib/content/articles";
 import { articleIdFromParam } from "@/lib/content/id";
 import { stripLeadingDuplicateH1 } from "@/lib/markdown/body";
-import { extractToc } from "@/lib/markdown/toc";
+import { extractToc, type TocEntry } from "@/lib/markdown/toc";
 import { deleteArticleAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ id: string }> };
+
+function TocLinks({ entries }: { entries: TocEntry[] }) {
+  return (
+    <ul className="mt-2 space-y-1 border-l border-border pl-3">
+      {entries.map((entry) => (
+        <li key={entry.id} className={entry.level === 3 ? "pl-3" : undefined}>
+          <a
+            href={`#${entry.id}`}
+            className="block text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            {entry.text}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
@@ -109,6 +126,14 @@ export default async function ArticlePage({ params }: Props) {
 
       <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_14rem]">
         <div className="min-w-0">
+          {toc.length > 1 ? (
+            <details className="mb-6 rounded-lg border border-border bg-surface px-4 py-3 lg:hidden">
+              <summary className="cursor-pointer text-sm font-medium">
+                目录（{toc.length}）
+              </summary>
+              <TocLinks entries={toc} />
+            </details>
+          ) : null}
           <ArticleMarkdown body={body} />
         </div>
 
@@ -116,18 +141,7 @@ export default async function ArticlePage({ params }: Props) {
           <aside aria-label="文章目录" className="hidden lg:block">
             <div className="sticky top-20">
               <p className="text-[11px] tracking-wide text-muted-foreground uppercase">目录</p>
-              <ul className="mt-2 space-y-1 border-l border-border pl-3">
-                {toc.map((entry) => (
-                  <li key={entry.id} className={entry.level === 3 ? "pl-3" : undefined}>
-                    <a
-                      href={`#${entry.id}`}
-                      className="block text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                    >
-                      {entry.text}
-                    </a>
-                  </li>
-                ))}
-              </ul>
+              <TocLinks entries={toc} />
             </div>
           </aside>
         ) : null}

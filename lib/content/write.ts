@@ -5,7 +5,7 @@ import matter from "gray-matter";
 
 import { formatLocalDate, formatLocalStamp } from "@/lib/content/clock";
 import { normalizeArticleBody } from "@/lib/content/body-text";
-import { parseArticle } from "@/lib/content/frontmatter";
+import { parseArticle, readFrontmatter } from "@/lib/content/frontmatter";
 import { revisionOf } from "@/lib/content/revision";
 import { fallbackNoteId, slugifyTitle } from "@/lib/content/id";
 import { writeFileAtomic } from "@/lib/fs/atomic-write";
@@ -88,7 +88,9 @@ function fromException(error: unknown): WriteFailure {
  */
 function renderSource(frontmatter: Record<string, unknown>, body: string): string {
   const normalized = normalizeArticleBody(body);
-  const text = matter.stringify(normalized ? `${normalized}\n` : "", frontmatter);
+  // 传对象而不是字符串：gray-matter 对字符串会先 `matter(file)`，正文里若有
+  // `---javascript` 就会在写盘前执行。对象形式只做 YAML stringify，不解析正文。
+  const text = matter.stringify({ content: normalized ? `${normalized}\n` : "" }, frontmatter);
   return text.endsWith("\n") ? text : `${text}\n`;
 }
 
@@ -188,8 +190,7 @@ async function createArticleUnlocked(
 /** 读出原有 frontmatter 的原始键值（用于保留我们不认识的字段，比如用户自己加的 `reviewed: true`） */
 function readRawFrontmatter(source: string): Record<string, unknown> {
   try {
-    const data = matter(source).data;
-    return data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+    return readFrontmatter(source);
   } catch {
     // 原有 frontmatter 坏到连 YAML 都解析不了 —— 那就以这次保存的内容为准（至少救回正文）
     return {};

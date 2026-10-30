@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { cn } from "cn";
 import { Save, TriangleAlert } from "lucide-react";
@@ -6,6 +6,7 @@ import { useActionState, useEffect, useId, useMemo, useRef, useState } from "rea
 import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
+import { useUnsavedGuard } from "@/components/use-unsaved-guard";
 import {
   INITIAL_TASK_FORM_STATE,
   type TaskFormState,
@@ -153,15 +154,7 @@ export function TaskForm({ mode, action, initial, articles, resources }: Props) 
     );
   }, [mode, initial, title, status, dueDate, note, articleIds, resourceIds]);
 
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  useUnsavedGuard(dirty);
 
   const fieldErrors = state.fieldErrors ?? {};
 

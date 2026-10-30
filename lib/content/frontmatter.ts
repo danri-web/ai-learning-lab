@@ -14,6 +14,40 @@ import { ARTICLE_ID_MESSAGE, ARTICLE_ID_REGEX_SOURCE } from "@/lib/security/arti
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * gray-matter 允许 `---javascript` / `---js` 这类“语言”标记，并用动态执行解析。
+ * 这个应用只需要 YAML frontmatter，所以**在进入解析器之前**就把其它语言拒掉。
+ * 只放行 YAML/JSON：两者都是数据格式，不会被当代码执行。
+ */
+const ALLOWED_LANGUAGES = new Set(["yaml", "yml", "json"]);
+const OPENING_LANGUAGE = /^\uFEFF?---[ \t]*([A-Za-z][\w-]*)[ \t]*$/;
+
+function assertSafeFrontmatterLanguage(source: string): void {
+  const firstLine = source.split(/\r?\n/, 1)[0] ?? "";
+  const match = OPENING_LANGUAGE.exec(firstLine);
+  if (!match) return;
+  const language = match[1].toLowerCase();
+  if (!ALLOWED_LANGUAGES.has(language)) {
+    throw new Error(`frontmatter 不允许使用可执行语言 “${match[1]}”；只支持 YAML`);
+  }
+}
+
+/**
+ * 唯一允许的解析入口：先拒绝可执行语言，再固定用 YAML 引擎。
+ * 不要在这里传用户可控的 `language` / `engines`。
+ */
+function parseSource(source: string): { data: unknown; content: string } {
+  assertSafeFrontmatterLanguage(source);
+  const parsed = matter(source, { language: "yaml" });
+  return { data: parsed.data, content: parsed.content };
+}
+
+/** 读原始 frontmatter（保存时保留用户自己加的字段用；失败由调用方决定怎么处理） */
+export function readFrontmatter(source: string): Record<string, unknown> {
+  const { data } = parseSource(source);
+  return data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+}
+
 export const articleFrontmatterSchema = z
   .object({
     // 与 lib/security/article-id.ts 共用同一份规则：id 同时是文件名（D3/D7），
@@ -58,7 +92,7 @@ export function parseArticle(source: string, fileId: string): ParseSuccess | Par
   let raw: unknown;
   let body: string;
   try {
-    const parsed = matter(source);
+    const parsed = parseSource(source);
     raw = parsed.data;
     body = parsed.content;
   } catch (error) {

@@ -23,20 +23,34 @@ function plainInline(text: string): string {
 
 /**
  * 从 markdown 原文提取 h2 / h3。
- * 会跳过 ``` 代码块里的 "## 看起来像标题" 的行（这是最容易出错的边界）。
+ * 会跳过代码块里的 "## 看起来像标题" 的行（这是最容易出错的边界）。
+ *
+ * 围栏不只有 ```：GFM 还允许 `~~~`，而且长度可以大于 3；关闭围栏必须用
+ * 同一种字符、且长度不少于打开的那一条（审计 v5 QA-01 的 `~~~` 漏判）。
  */
 export function extractToc(markdown: string): TocEntry[] {
   const entries: TocEntry[] = [];
   const seen = new Map<string, number>();
-  let inFence = false;
+  let fence: { char: "`" | "~"; length: number } | null = null;
 
   for (const line of markdown.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (trimmed.startsWith("```")) {
-      inFence = !inFence;
+
+    if (fence) {
+      const closing = /^(`{3,}|~{3,})\s*$/.exec(trimmed);
+      if (closing && closing[1][0] === fence.char && closing[1].length >= fence.length) {
+        fence = null;
+      }
       continue;
     }
-    if (inFence) continue;
+
+    const opening = /^(`{3,}|~{3,})(.*)$/.exec(trimmed);
+    if (opening) {
+      // 反引号围栏的 info string 里不能再出现反引号；出现了就当普通正文（CommonMark）
+      if (opening[1][0] === "`" && opening[2].includes("`")) continue;
+      fence = { char: opening[1][0] as "`" | "~", length: opening[1].length };
+      continue;
+    }
 
     const match = /^(#{2,3})\s+(.+?)\s*#*$/.exec(trimmed);
     if (!match) continue;

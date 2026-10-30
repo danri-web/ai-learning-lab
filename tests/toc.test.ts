@@ -67,4 +67,23 @@ describe("提取目录", () => {
   it("没有标题时返回空数组", () => {
     expect(extractToc("只有正文，没有标题")).toEqual([]);
   });
+
+  it("~~~ 围栏里的 ## 不算标题（QA-01）", () => {
+    const source = ["~~~markdown", "## Ghost", "~~~", "", "## Real"].join("\n");
+    const toc = extractToc(source);
+    expect(toc.map((entry) => entry.text)).toEqual(["Real"]);
+    expect(toc[0].id).toBe("real");
+  });
+
+  it("围栏长度大于 3 时，短围栏不能提前关闭它", () => {
+    const source = ["````md", "```", "## Inside", "````", "", "## Outside"].join("\n");
+    const toc = extractToc(source);
+    expect(toc.map((entry) => entry.text)).toEqual(["Outside"]);
+  });
+
+  it("反引号围栏不会被 ~~~ 关闭", () => {
+    const source = ["```md", "~~~", "## Inside", "```", "", "## Outside"].join("\n");
+    const toc = extractToc(source);
+    expect(toc.map((entry) => entry.text)).toEqual(["Outside"]);
+  });
 });

@@ -54,4 +54,28 @@ describe("登录失败限速", () => {
     limiter.recordFailure("ip");
     expect(limiter.check("ip").allowed).toBe(true);
   });
+
+  it("并发抢占：100 个 beginAttempt 只有 5 个能进验证（SEC-03）", () => {
+    const limiter = new LoginRateLimiter({ now: () => 0 });
+    const decisions = Array.from({ length: 100 }, () => limiter.beginAttempt("owner"));
+    const admitted = decisions.filter((decision) => decision.allowed);
+    expect(admitted).toHaveLength(5);
+
+    // 这 5 个都失败后，桶锁定，新的 beginAttempt 也被挡
+    for (let attempt = 0; attempt < 5; attempt += 1) limiter.recordFailure("owner");
+    expect(limiter.beginAttempt("owner").allowed).toBe(false);
+    expect(limiter.check("owner").allowed).toBe(false);
+  });
+
+  it("成功结算会清空占坑，不会永久占死", () => {
+    const limiter = new LoginRateLimiter({ now: () => 0 });
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect(limiter.beginAttempt("owner").allowed).toBe(true);
+    }
+    expect(limiter.beginAttempt("owner").allowed).toBe(false);
+
+    // 登录成功 = 清桶；下一次仍然可以正常尝试
+    limiter.recordSuccess("owner");
+    expect(limiter.beginAttempt("owner").allowed).toBe(true);
+  });
 });

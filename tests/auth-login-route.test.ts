@@ -79,4 +79,17 @@ describe("登录路由的限速桶", () => {
     // 被限速的请求不应该再跑 scrypt
     expect(passwordState.calls).toBe(5);
   });
+
+  it("超大表单在流上被截断，不跑 scrypt（SEC-02）", async () => {
+    const request = new Request("http://127.0.0.1:3000/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ password: "x".repeat(9000) }).toString(),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toContain("/login?error=wrong");
+    expect(passwordState.calls).toBe(0);
+  });
 });

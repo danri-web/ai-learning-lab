@@ -6,6 +6,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
+import { useUnsavedGuard } from "@/components/use-unsaved-guard";
 import {
   INITIAL_RESOURCE_FORM_STATE,
   type ResourceFormState,
@@ -95,15 +96,7 @@ export function ResourceForm({ mode, action, initial, articles }: Props) {
     );
   }, [mode, initial, title, url, type, category, tags, description, articleId]);
 
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  useUnsavedGuard(dirty);
 
   const fieldErrors = state.fieldErrors ?? {};
   const host = resourceHost(url);

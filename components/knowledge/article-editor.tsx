@@ -2,11 +2,12 @@
 
 import { cn } from "cn";
 import { Eye, PencilLine, Save, TriangleAlert } from "lucide-react";
-import { useActionState, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useActionState, useDeferredValue, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { ArticleMarkdown } from "@/components/knowledge/article-markdown";
 import { Button } from "@/components/ui/button";
+import { useUnsavedGuard } from "@/components/use-unsaved-guard";
 import { INITIAL_FORM_STATE, type FormState } from "@/features/articles/form-state";
 import { slugifyTitle } from "@/lib/content/id";
 
@@ -14,7 +15,7 @@ import { slugifyTitle } from "@/lib/content/id";
  * Markdown 编辑器：左边写、右边看（窄屏切换）。
  *
  * 刻意做的几件事：
- *   - **未保存提醒**：改动过且没提交时，关标签页/刷新会弹浏览器原生确认（beforeunload）
+ *   - **未保存提醒**：改动过且没提交时，关标签页/刷新/站内跳转都会弹确认
  *   - 预览用 `useDeferredValue`：打字不卡，预览稍慢半拍可以接受
  *   - 新建时实时显示「文件名」，因为它由标题生成、创建后不再变（D3 / D7）
  *   - 表单用 Server Action + `useActionState`：保存失败时**输入不丢**，错误回到字段旁边
@@ -68,16 +69,7 @@ export function ArticleEditor({ mode, action, initial }: Props) {
     );
   }, [mode, initial, title, category, tags, body]);
 
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      // 老浏览器要靠 returnValue 才弹；现代浏览器忽略它但需要被赋值
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  useUnsavedGuard(dirty);
 
   const deferredBody = useDeferredValue(body);
   const fieldErrors = state.fieldErrors ?? {};
