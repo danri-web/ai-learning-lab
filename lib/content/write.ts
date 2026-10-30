@@ -9,6 +9,7 @@ import { parseArticle } from "@/lib/content/frontmatter";
 import { revisionOf } from "@/lib/content/revision";
 import { fallbackNoteId, slugifyTitle } from "@/lib/content/id";
 import { writeFileAtomic } from "@/lib/fs/atomic-write";
+import { serialize } from "@/lib/fs/mutex";
 import { UnsafePathError, resolveArticleFile, resolveTrashFile } from "@/lib/security/paths";
 import { MAX_ID_LENGTH } from "@/lib/security/article-id";
 
@@ -20,8 +21,8 @@ import { MAX_ID_LENGTH } from "@/lib/security/article-id";
  *   2. **写之前先证明写出来的东西读得回来** —— 生成 source 后过一遍 `parseArticle`，
  *      而且要求**正文一字不差**；过不了就根本不落盘（审计 v3 F3 补的等式检查）
  *   3. 删除 = 移到 `.trash/`，不是真删（用户数据，误删要能捞回来）
- *   4. **写操作进程内串行**（`serialize`）：分配 id 与落盘之间如果插进另一个请求，
- *      两边都会以为自己是第一个 —— 审计 v3 F1 实测 8 个并发创建只活下来 1 个 id
+ *   4. **写操作进程内串行**（`lib/fs/mutex.ts` 的 `serialize`）：分配 id 与落盘之间如果插进
+ *      另一个请求，两边都会以为自己是第一个 —— 审计 v3 F1 实测 8 个并发创建只活下来 1 个 id
  *
  * 这里不做「用户输入是否友好」的判断（字段长度、标签数量在 service 层做），
  * 只做「这个文件/这次写入是否安全、是否自洽」。
@@ -61,25 +62,6 @@ export type SaveOptions = WriteOptions & {
   /** 用户明确选择「覆盖」时置真：跳过过期检查 */
   force?: boolean;
 };
-
-/**
- * 进程内写锁：所有会改磁盘的操作排队执行。
- *
- * 为什么够用：这是单用户、单进程的本地应用，所有写入都来自同一个 Next 进程的 Server Action。
- * 为什么必须有：分配 id 用 `readdir` 拿快照，落盘用 rename —— 两次操作之间如果插进另一个
- * 创建请求，两边会算出一模一样的 id，后落盘的把前一份**静默覆盖**（实测 8 并发只活 1 份）。
- *
- * 已知不覆盖：两个独立进程（比如你同时开两个 `next dev`、或另跑一个 CLI）之间不共享这把锁 ——
- * 这属于 `docs/架构决策.md` 残余风险里的 TOCTOU 一类，已明确接受。
- */
-let writeQueue: Promise<unknown> = Promise.resolve();
-
-function serialize<T>(task: () => Promise<T>): Promise<T> {
-  const run = writeQueue.then(task, task);
-  // 队列只关心顺序，不关心成败：前一个失败也必须让后一个跑起来
-  writeQueue = run.catch(() => {});
-  return run;
-}
 
 function fail(reason: WriteFailureReason, error: string): WriteFailure {
   return { ok: false, reason, error };

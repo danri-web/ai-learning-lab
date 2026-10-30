@@ -23,9 +23,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <SidebarNav />
           <div className="border-t border-border px-4 py-3">
             <p className="text-[11px] leading-relaxed text-muted-foreground">
-              阶段 3 · 知识库可读写
+              阶段 4 · 知识库 + 资源收藏
               <br />
-              资源 / 搜索 / 任务见需求书 §7
+              搜索 / 任务见需求书 §7
             </p>
           </div>
         </aside>

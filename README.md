@@ -2,11 +2,13 @@
 
 一个本地优先的 AI 学习、知识管理与资源收藏工作台。
 
-**当前状态：阶段 3 完成（知识库可读可写）。** 能在界面里新建、编辑、删除自己的 Markdown 笔记：双栏预览编辑器、未保存提醒、删除进回收站；列表、详情、GFM 表格、代码高亮、公式、文章目录都在。**中文标题直接当文件名。**
+**当前状态：阶段 4 完成（知识库 + 资源收藏）。** 笔记能新建/编辑/删除（中文标题直接当文件名）；资源收藏能增删改、按类型/分类/标签筛选、三种排序，并能挂到某篇笔记上。链接只接受 http/https，应用**从不抓取**你填的地址。
 
 ![知识库](docs/screenshot-article.png)
 
 ![编辑器](docs/screenshot-editor.png)
+
+![资源收藏](docs/screenshot-resources.png)
 
 > 完整需求、验收标准与八阶段路线在 **[docs/需求书.md](docs/需求书.md)**（原始需求书，内容保持原样）。
 
@@ -97,14 +99,16 @@ npm run format:check # Prettier 只检查
 app/(workspace)/   页面：总览 / 知识库（列表、[id] 详情、new 新建、[id]/edit 编辑）
                   knowledge/actions.ts = Server Action（只做 FormData ↔ 对象 + 跳转）
 features/articles/  service.ts = 业务规则（唯一决定"能不能写"的地方）
+features/resources/ 资源收藏的 service 与表单状态
 components/layout/ 外壳：侧栏、顶栏、手机抽屉、页面标题
 components/ui/     shadcn 组件 + 空状态
 components/knowledge/  Markdown 渲染器 + 编辑器 + 删除确认
-lib/content/       读主体（articles.ts）、frontmatter 校验、写入（write.ts）、id 生成
-lib/markdown/     目录提取、标题锚点分配、正文整形
-lib/security/      文章 id 规则、路径闸门（唯一的 id → 路径入口）
-lib/fs/            原子写入（临时文件 + fsync + rename）
-tests/             Vitest 单元测试（130 条，其中 1 条在本机会 skipped）
+components/resources/  收藏表单 + 删除确认
+lib/content/       笔记读写（articles/write）、资源读写（resources/resources-store）、id 与校验
+lib/markdown/      目录提取、标题锚点分配、正文整形
+lib/security/      文章 id 规则、路径闸门、资源 URL 白名单
+lib/fs/            原子写入（临时文件 + fsync + rename）、进程内写锁
+tests/             Vitest 单元测试（149 条，其中 1 条在本机会 skipped）
 docs/              需求书、架构决策、截图
 public/            静态资源
 ```
@@ -119,7 +123,7 @@ public/            静态资源
 | 2 | 设计系统与页面框架 | ✅ 2026-10-29 |
 | 3a | Markdown 知识库：只读（列表 / 详情 / 渲染） | ✅ 2026-10-29 |
 | 3b | Markdown 知识库：写入（编辑器 / 保存 / 删除） | ✅ 2026-10-30 |
-| 4 | 资源收藏中心 | ⬜ 未开始 |
+| 4 | 资源收藏中心 | ✅ 2026-10-30 |
 | 5 | 全文搜索 | ⬜ 未开始 |
 | 6 | 学习任务与 Dashboard | ⬜ 未开始 |
 | 7 | 备份、安全与局域网访问 | ⬜ 未开始 |
@@ -196,3 +200,15 @@ public/            静态资源
 | F4 | 同名标题的目录锚点没有落点 | 目录给 `example-1`，渲染器两个都是 `example`（重复 id） | 目录与渲染共用一套分配逻辑（[heading-ids.ts](lib/markdown/heading-ids.ts)） | 每个目录锚点都恰好对应一个标题 id |
 
 > 断言从 116 条增至 **130 条**；F1/F2/F3 的复现都先跑出失败输出，再改代码。
+
+### 阶段 4 具体做了什么（资源收藏）
+
+- **一个 JSON 就是全部资源**：`content/resources.json`（`{ version: 1, resources: [...] }`），和笔记一样文件是真相；主仓库 gitignore，跟笔记一起进那个私有仓库
+- **URL 只认 http / https**（[resource-url.ts](lib/security/resource-url.ts)）：`javascript:`、`data:`、`file:`、相对路径、裸域名、带凭据的地址全拒；**服务端从不 fetch 用户给的地址**，所以没有 SSRF 面
+- **写入沿用笔记的地基**：进程内写锁 + 原子写 + 写前自检；单条资源的指纹做「过期保存」检查（D8 同款），冲突时给「仍然覆盖」
+- **文件坏了不覆盖**：`resources.json` 解析失败时，页面报出具体原因，应用**拒绝任何写入**（宁可停手，也不要把用户的坏文件连同修复机会一起覆盖掉）
+- **删除可恢复**：从数组移除的同时，把这条记录追加到 `content/.trash/resources-deleted.jsonl`（带删除时间），贴回 JSON 就回来
+- **筛选 / 排序**：类型 / 分类 / 标签三组 chips（带计数）+ 三种排序（最近更新 / 最近添加 / 按标题），全部用 URL 参数，刷新与分享都能保留
+- **关联笔记**：表单里从现有笔记里选，列表上显示成可点的链接（逻辑关联，不校验对方是否还存在）
+- 断言：149 条（新增 URL 白名单 4 条、资源读写 15 条；1 条文件级符号链接的断言在本机 skipped）
+- **实测踩到的坑**：客户端表单从带 `node:fs` 的模块里 import 常量 → Turbopack 报 "does not support external modules (request: node:fs)"，构建直接失败；把纯常量拆到 `lib/content/resource-types.ts` 后正常
