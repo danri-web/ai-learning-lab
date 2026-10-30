@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { articlesRoot } from "@/lib/content/articles";
+import { pendingRestoreMessage } from "@/lib/content/restore-gate";
 import { createArticle, saveArticle, trashArticle, type WriteFailure } from "@/lib/content/write";
 import { isSafeArticleId } from "@/lib/security/article-id";
 
@@ -122,6 +123,9 @@ function describeFailure(failure: WriteFailure): string {
 export async function createArticleFromFields(
   fields: ArticleFields,
 ): Promise<ServiceResult<{ id: string }>> {
+  const blocked = await pendingRestoreMessage();
+  if (blocked) return { ok: false, error: blocked };
+
   const valid = validate(fields);
   if (!valid.ok) return valid;
 
@@ -139,6 +143,9 @@ export async function saveArticleFromFields(
   controls: SaveControls = {},
 ): Promise<ServiceResult<{ id: string; createdAt: string; updatedAt: string }>> {
   if (!isSafeArticleId(id)) return { ok: false, error: "这个文件名不被接受" };
+
+  const blocked = await pendingRestoreMessage();
+  if (blocked) return { ok: false, error: blocked };
 
   const valid = validate(fields);
   if (!valid.ok) return valid;
@@ -163,6 +170,9 @@ export async function saveArticleFromFields(
 
 export async function deleteArticleById(id: string): Promise<ServiceResult<{ id: string }>> {
   if (!isSafeArticleId(id)) return { ok: false, error: "这个文件名不被接受" };
+
+  const blocked = await pendingRestoreMessage();
+  if (blocked) return { ok: false, error: blocked };
 
   const result = await trashArticle(id, { root: articlesRoot() });
   if (!result.ok) return { ok: false, error: describeFailure(result) };

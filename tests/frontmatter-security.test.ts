@@ -3,6 +3,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { parseArticle, readFrontmatter } from "@/lib/content/frontmatter";
+import { checkBackupPayload } from "@/lib/content/backup-validate";
+import type { BackupManifest } from "@/lib/content/backup-format";
 import { createArticle } from "@/lib/content/write";
 
 /**
@@ -99,5 +101,98 @@ describe("写笔记时不解析正文里的 ---javascript（SEC-01 写入路径�
     const text = await fs.readFile(path.join(root, "安全写入.md"), "utf8");
     expect(text).toContain("---javascript");
     expect(text).toContain("正文");
+  });
+});
+
+/**
+ * v2 外部审计（V2-SEC-01）：`---javascript\u00a0` 这类 Unicode 空白能绕过旧的正则。
+ * 旧守卫只认 `[ \t]`，不匹配就**直接放行**，而 gray-matter 用 `String.trim()` 判语言，
+ * 会把 NBSP / EM SPACE / BOM / 垂直制表符都 trim 掉，于是 `javascript` 引擎照样被选中并执行。
+ *
+ * 现在的契约：**开头不是严格的 `---`（可带 yaml/yml/json）就直接拒绝**，并且把语言标记
+ * 从 opener 上抹掉再交给 gray-matter —— 解析器根本没有“语言”可选。
+ */
+const UNICODE_GAPS: [string, string][] = [
+  ["NBSP (U+00A0)", "\u00a0"],
+  ["EM SPACE (U+2003)", "\u2003"],
+  ["NARROW NBSP (U+202F)", "\u202f"],
+  ["IDEOGRAPHIC SPACE (U+3000)", "\u3000"],
+  ["BOM (U+FEFF)", "\ufeFF"],
+  ["VERTICAL TAB (U+000B)", "\u000b"],
+];
+
+function jsPayload(gap: string, where: "trailing" | "leading"): string {
+  const opener = where === "trailing" ? `---javascript${gap}` : `---${gap}javascript`;
+  return `${opener}\n(globalThis.__aiLabFrontmatterMarker = 7, { ${FIELDS} })\n---\n正文`;
+}
+
+describe("frontmatter 守卫不能被 Unicode 空白绕过（V2-SEC-01）", () => {
+  beforeEach(() => {
+    markerHolder.__aiLabFrontmatterMarker = 0;
+  });
+
+  afterEach(() => {
+    delete markerHolder.__aiLabFrontmatterMarker;
+  });
+
+  for (const [label, gap] of UNICODE_GAPS) {
+    it(`---javascript + ${label}：拒绝，payload 未执行`, () => {
+      const result = parseArticle(jsPayload(gap, "trailing"), "hello");
+      expect(result.ok).toBe(false);
+      expect(marker()).toBe(0);
+    });
+
+    it(`--- + ${label} + javascript（前置空白）：拒绝，payload 未执行`, () => {
+      const result = parseArticle(jsPayload(gap, "leading"), "hello");
+      expect(result.ok).toBe(false);
+      expect(marker()).toBe(0);
+    });
+  }
+
+  it("文件开头 BOM + 尾部 NBSP：拒绝，payload 未执行", () => {
+    const result = parseArticle(`\uFEFF${jsPayload("\u00a0", "trailing")}`, "hello");
+    expect(result.ok).toBe(false);
+    expect(marker()).toBe(0);
+  });
+
+  it("readFrontmatter（保存旧笔记）同样拒绝且不执行", () => {
+    expect(() => readFrontmatter(jsPayload("\u00a0", "trailing"))).toThrow();
+    expect(marker()).toBe(0);
+  });
+
+  it("元数据本身不合法时也不会先执行（校验失败不能掩盖执行）", () => {
+    const payload = `---javascript\u00a0\n(globalThis.__aiLabFrontmatterMarker = 8, { id: "wrong" })\n---\n正文`;
+    expect(parseArticle(payload, "hello").ok).toBe(false);
+    expect(marker()).toBe(0);
+  });
+
+  it("备份 payload 校验（恢复预览）同样不会执行", () => {
+    const payload = jsPayload("\u00a0", "trailing");
+    const bytes = Buffer.from(payload, "utf8");
+    const manifest = {
+      files: [{ path: "content/articles/hello.md", size: bytes.length, sha256: "0".repeat(64) }],
+    } as unknown as BackupManifest;
+
+    const check = checkBackupPayload(manifest, new Map([["content/articles/hello.md", bytes]]));
+
+    // 单篇笔记坏掉只给 warning（不阻止恢复），但绝不能执行
+    expect(check.ok).toBe(true);
+    expect(marker()).toBe(0);
+    if (check.ok) expect(check.warnings.join("\n")).toContain("hello.md");
+  });
+
+  it("白名单写法仍然按数据解析：--- / ---yaml / ---json / 尾部空格", () => {
+    const body = `id: hello
+title: 你好
+category: 测试
+createdAt: "2026-10-01"
+updatedAt: "2026-10-02"`;
+
+    for (const opening of ["---", "---yaml", "---json", "---   "]) {
+      const source = `${opening}\n${body}\n---\n正文`;
+      const result = parseArticle(source, "hello");
+      expect(result.ok, `opening=${JSON.stringify(opening)}`).toBe(true);
+    }
+    expect(marker()).toBe(0);
   });
 });

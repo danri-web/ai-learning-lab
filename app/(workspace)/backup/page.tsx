@@ -6,7 +6,12 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { formatBytes, isBackupFileName, type RestorePlanEntry } from "@/lib/content/backup-format";
 import { loadBackupOverview, previewRestoreByName } from "@/features/backup/service";
-import { applyRestoreAction, createBackupAction, verifyBackupAction } from "./actions";
+import {
+  applyRestoreAction,
+  createBackupAction,
+  discardRestoreJournalAction,
+  verifyBackupAction,
+} from "./actions";
 
 export const metadata: Metadata = { title: "备份" };
 export const dynamic = "force-dynamic";
@@ -19,6 +24,7 @@ type Params = {
   restore?: string;
   includeDeletes?: string;
   error?: string;
+  journal?: string;
 };
 
 function Notice({ tone, children }: { tone: "ok" | "warn" | "error"; children: React.ReactNode }) {
@@ -125,6 +131,47 @@ export default async function BackupPage({ searchParams }: { searchParams: Promi
               {overview.recovery.detail}
             </p>
           ) : null}
+
+          {overview.recovery.tone === "error" ? (
+            <form
+              action={discardRestoreJournalAction}
+              className="mt-3 grid gap-2 rounded-lg border border-danger/30 p-3"
+            >
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                快照找不回来时，按正常流程永远收不了尾，写入会一直暂停。确认放弃这次恢复日志后，
+                不再自动回滚，写入立即恢复；当前 <code>content/</code> 的状态会被保留。
+              </p>
+              <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" required className="mt-0.5" />
+                我确认这份恢复日志已经没用了
+              </label>
+              <label className="grid gap-1 text-xs text-muted-foreground">
+                输入「删除」两个字确认
+                <input
+                  name="confirmDiscard"
+                  required
+                  pattern="删除"
+                  autoComplete="off"
+                  className="h-9 w-40 rounded-lg border border-border bg-background px-3 font-mono text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                />
+              </label>
+              <div>
+                <Button type="submit" variant="destructive" size="sm">
+                  放弃这次恢复日志
+                </Button>
+              </div>
+            </form>
+          ) : null}
+        </Notice>
+      ) : null}
+
+      {params.journal === "discarded" ? (
+        <Notice tone="warn">
+          <p className="font-medium">恢复日志已删除，写入已恢复</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            不再自动回滚。如果后来发现快照其实还在，可以把它放回 <code>backups/</code>{" "}
+            后手动预览恢复。
+          </p>
         </Notice>
       ) : null}
 
@@ -220,7 +267,8 @@ export default async function BackupPage({ searchParams }: { searchParams: Promi
             每次恢复前都会先建一份 <code>pre-restore-*.zip</code>{" "}
             快照并回读校验；写到一半失败会自动回滚。恢复开始前还会在 <code>backups/</code> 写一份
             <code>restore-journal.json</code>
-            ：如果进程被强杀，下次打开这一页会自动回到恢复前的快照。 备份是明文
+            ：如果进程被强杀，<strong>下次启动</strong>会自动回到恢复前的快照；在收尾完成前，
+            新建/编辑/删除都会被暂停（避免把重启后做的修改覆盖掉）。 备份是明文
             zip，别放公开同步盘。
           </p>
         </div>

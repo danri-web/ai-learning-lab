@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { contentRoot, isResourceType, type ResourceType } from "@/lib/content/resources";
+import { pendingRestoreMessage } from "@/lib/content/restore-gate";
 import {
   createResource,
   deleteResource,
@@ -145,6 +146,9 @@ export type ResourceControls = { base?: string; force?: boolean };
 export async function createResourceFromFields(
   fields: ResourceFields,
 ): Promise<ServiceResult<{ id: string }>> {
+  const blocked = await pendingRestoreMessage();
+  if (blocked) return { ok: false, error: blocked };
+
   const valid = validate(fields);
   if (!valid.ok) return valid;
 
@@ -159,6 +163,9 @@ export async function updateResourceFromFields(
   controls: ResourceControls = {},
 ): Promise<ServiceResult<{ id: string }>> {
   if (!isSafeArticleId(id)) return { ok: false, error: "这个资源 id 不被接受" };
+
+  const blocked = await pendingRestoreMessage();
+  if (blocked) return { ok: false, error: blocked };
 
   const valid = validate(fields);
   if (!valid.ok) return valid;
@@ -180,6 +187,9 @@ export async function updateResourceFromFields(
 
 export async function deleteResourceById(id: string): Promise<ServiceResult<{ id: string }>> {
   if (!isSafeArticleId(id)) return { ok: false, error: "这个资源 id 不被接受" };
+
+  const blocked = await pendingRestoreMessage();
+  if (blocked) return { ok: false, error: blocked };
 
   const result = await deleteResource(id, { root: contentRoot() });
   if (!result.ok) return { ok: false, error: describeFailure(result) };

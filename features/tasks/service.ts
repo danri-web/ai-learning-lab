@@ -11,6 +11,7 @@ import {
   type StoreFailure,
 } from "@/lib/content/tasks-store";
 import { contentRoot, readTasks } from "@/lib/content/tasks";
+import { pendingRestoreMessage } from "@/lib/content/restore-gate";
 import { isSafeArticleId } from "@/lib/security/article-id";
 
 /**
@@ -90,7 +91,12 @@ function fieldErrorsOf(error: z.ZodError): Record<string, string> {
   return out;
 }
 
-export async function createTaskFromFields(fields: TaskFields): Promise<ServiceResult<{ id: string }>> {
+export async function createTaskFromFields(
+  fields: TaskFields,
+): Promise<ServiceResult<{ id: string }>> {
+  const blocked = await pendingRestoreMessage();
+  if (blocked) return { ok: false, error: blocked };
+
   const checked = FIELDS.safeParse(fields);
   if (!checked.success) {
     return {
@@ -112,6 +118,9 @@ export async function updateTaskFromFields(
 ): Promise<ServiceResult<{ id: string }>> {
   if (!isSafeArticleId(id)) return { ok: false, error: `任务 id 不合法：${id}` };
 
+  const blocked = await pendingRestoreMessage();
+  if (blocked) return { ok: false, error: blocked };
+
   const checked = FIELDS.safeParse(fields);
   if (!checked.success) {
     return {
@@ -132,14 +141,22 @@ export async function updateTaskFromFields(
 
 export async function deleteTaskById(id: string): Promise<ServiceResult<{ id: string }>> {
   if (!isSafeArticleId(id)) return { ok: false, error: `任务 id 不合法：${id}` };
+  const blocked = await pendingRestoreMessage();
+  if (blocked) return { ok: false, error: blocked };
   const result = await deleteTask(id, { root: contentRoot() });
   if (!result.ok) return fromStoreError(result);
   return { ok: true, data: { id: result.id } };
 }
 
-export async function setTaskStatus(id: string, status: string): Promise<ServiceResult<{ id: string }>> {
+export async function setTaskStatus(
+  id: string,
+  status: string,
+): Promise<ServiceResult<{ id: string }>> {
   if (!isSafeArticleId(id)) return { ok: false, error: `任务 id 不合法：${id}` };
   if (!isTaskStatus(status)) return { ok: false, error: "状态只能是待办 / 进行中 / 已完成" };
+
+  const blocked = await pendingRestoreMessage();
+  if (blocked) return { ok: false, error: blocked };
 
   const result = await updateTaskStatus(id, status, { root: contentRoot() });
   if (!result.ok) return fromStoreError(result);

@@ -24,9 +24,11 @@ import {
   RESTORE_JOURNAL_VERSION,
   clearRestoreJournal,
   readRestoreJournal,
+  restoreJournalPath,
   writeRestoreJournal,
   type RestoreJournal,
 } from "@/lib/content/restore-journal";
+import type { RestoreRecovery } from "@/lib/content/restore-types";
 import { writeFileAtomic } from "@/lib/fs/atomic-write";
 import { serialize } from "@/lib/fs/mutex";
 import { contentPathForEntry } from "@/lib/security/backup-entry";
@@ -75,12 +77,9 @@ export type RestoreSuccess = {
 /**
  * 上一次恢复留下的日志（DATA-01）。启动时/下一次恢复前用它决定：
  * 自动回滚、只清日志，还是 fail closed。
+ * 类型放在 restore-types.ts：源码闸门不允许其它模块 import 本文件（连类型也算）。
  */
-export type RestoreRecovery =
-  | { state: "none" }
-  | { state: "recovered"; snapshot: string }
-  | { state: "already-complete"; snapshot: string }
-  | { state: "failed"; snapshot: string | null; error: string };
+export type { RestoreRecovery } from "@/lib/content/restore-types";
 
 class PreflightError extends Error {
   constructor(message: string) {
@@ -294,13 +293,21 @@ async function recoverPendingRestoreUnlocked(options: {
     return {
       state: "failed",
       snapshot: journal.snapshot,
-      error: `上次恢复没有完成，自动回滚也失败（${rolledBack.error}）。快照 ${journal.snapshot} 还在 backups/，请在 /backup 列表里对它点「回滚」。`,
+      error: `上次恢复没有完成，自动回滚也失败（${rolledBack.error}）。快照 ${journal.snapshot} 还在 backups/：把它放回去后刷新 /backup 会重试；确认找不回来，就在 /backup 点「放弃这次恢复日志」（写入会暂停到处理完为止）。`,
     };
   }
 
-  // 数据已经回到快照。日志删不掉时不再额外报错：下次启动会对同一快照再核对一次（幂等），
-  // 但每次都会再尝试删除日志。
-  await clearRestoreJournal(backupsDir);
+  // 数据已经回到快照，但日志删不掉时不能报「已收尾」：下一次启动会把这条 applying
+  // 日志再回滚一次，把用户在中间做的编辑顶掉（v2 审计 V2-DATA-01）。所以保持 failed：
+  // 写入闸门会继续挡住写入，直到日志被删掉（页面上有「放弃这次恢复日志」）。
+  const cleared = await clearRestoreJournal(backupsDir);
+  if (!cleared.ok) {
+    return {
+      state: "failed",
+      snapshot: journal.snapshot,
+      error: `数据已经回到快照 ${journal.snapshot}，但恢复日志删不掉（${cleared.error}）。写入已暂停；请手动删除 ${restoreJournalPath(backupsDir)}，或到 /backup 点「放弃这次恢复日志」。`,
+    };
+  }
   return { state: "recovered", snapshot: journal.snapshot };
 }
 

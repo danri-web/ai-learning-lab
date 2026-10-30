@@ -13,6 +13,8 @@ import {
 } from "@/lib/content/backup-store";
 import { isBackupFileName, type RestorePlan } from "@/lib/content/backup-format";
 import { countByKind } from "@/lib/content/backup-validate";
+import { clearRestoreJournal, restoreJournalPath } from "@/lib/content/restore-journal";
+import { startupRecovery } from "@/lib/content/restore-startup";
 import {
   applyRestore,
   recoverPendingRestore,
@@ -82,18 +84,20 @@ function describeRecovery(result: RestoreRecovery): BackupRecoveryNotice | null 
     message:
       result.snapshot === null
         ? "恢复日志读不出来，已停下不动数据"
-        : `上次恢复没有完成，自动回滚也失败；请在下面列表对 ${result.snapshot} 点「回滚」`,
+        : `上次恢复没有完成，自动回滚也失败（快照 ${result.snapshot}）`,
     detail: result.error,
   };
 }
 
 /**
- * 每个进程只跑一次的启动恢复（DATA-01）。
+ * 兜底的启动恢复（v2 审计 V2-DATA-01）。
  *
- * 为什么不放在 instrumentation.ts 的 register()：Next 16.4.3 的 register 在非 dev 的
- * server 实例上都会执行（构建期的静态生成 worker 也会），那等于在 build 里做文件回滚。
- * 任务卡允许的退路是「每进程第一次调用 loadBackupOverview / applyRestore 时执行一次」，
- * 这里就用模块级 Promise 做单次守卫。
+ * 正常路径是 `instrumentation.ts` 在进程启动时先收尾（Next 自己会跳过 build 阶段）；
+ * 这里再做一次「每进程一次」的守卫，覆盖 instrumentation 没跑到的场景（测试、旧入口）。
+ * 两次都走 `serialize`，不会和正文写入交错。
+ *
+ * 为什么还要写入闸门：只有这一层的话，重启后先编辑、后打开 /backup 仍会被回滚顶掉；
+ * `lib/content/restore-gate.ts` 会在日志未收尾时直接拒绝所有正常写入。
  */
 let recoveryOnce: Promise<void> | null = null;
 let recoveryNotice: BackupRecoveryNotice | null = null;
@@ -102,6 +106,14 @@ async function recoverOnce(): Promise<void> {
   if (!recoveryOnce) {
     recoveryOnce = (async () => {
       try {
+        // 启动时（instrumentation）已经收尾过的话，直接用那份结果做提示：
+        // 日志这时已经被删了，再读只会得到 none，页面就看不到「已自动回滚」。
+        const startup = startupRecovery();
+        if (startup && (startup.state === "recovered" || startup.state === "already-complete")) {
+          recoveryNotice = describeRecovery(startup);
+          return;
+        }
+
         recoveryNotice = describeRecovery(await recoverPendingRestore({}));
       } catch (error) {
         // 读日志/回滚本身抛异常（不是「返回失败」）：保留提示，允许下次请求再试一次
@@ -115,6 +127,12 @@ async function recoverOnce(): Promise<void> {
     })();
   }
   await recoveryOnce;
+}
+
+/** 恢复没收尾时，建备份/预览/恢复都先拒绝（v2 审计：以前会顺着混合状态继续做） */
+function recoveryBlocked(): string | null {
+  if (recoveryNotice?.tone !== "error") return null;
+  return `上次恢复没有收尾，先处理它再继续：${recoveryNotice.message}`;
 }
 
 export async function loadBackupOverview(): Promise<BackupOverview> {
@@ -156,6 +174,8 @@ export async function loadBackupOverview(): Promise<BackupOverview> {
 export async function createBackupNow(): Promise<CreateBackupResult> {
   await requireAuth();
   await recoverOnce();
+  const blocked = recoveryBlocked();
+  if (blocked) return { ok: false, error: blocked };
   return createBackup({});
 }
 
@@ -172,6 +192,9 @@ export async function previewRestoreByName(
   { ok: true; plan: RestorePlan; warnings: string[]; fileCount: number } | BackupServiceFailure
 > {
   await requireAuth();
+  await recoverOnce();
+  const blocked = recoveryBlocked();
+  if (blocked) return fail(blocked);
   if (!isBackupFileName(name)) return fail("备份文件名不合法");
 
   const preview = await previewRestore({ name, includeDeletes });
@@ -195,7 +218,32 @@ export async function applyRestoreFromForm(input: {
     return { ok: false, reason: "invalid", error: "备份文件名不合法" };
   }
   await recoverOnce();
+  const blocked = recoveryBlocked();
+  if (blocked) return { ok: false, reason: "io", error: blocked };
   return applyRestore(input);
+}
+
+/**
+ * 放弃恢复日志（v2 审计 V2-DATA-01 的出口）。
+ *
+ * 只在「自动回滚失败 / 日志读不出来」时需要：快照找不回来时，按正常流程永远收不了尾，
+ * 写入闸门会一直挡着。这里让用户显式确认后删掉日志，接受当前 content/ 的状态。
+ * 删除本身失败就如实报错 —— 不要假装放弃成功。
+ */
+export async function discardRestoreJournal(): Promise<{ ok: true } | BackupServiceFailure> {
+  await requireAuth();
+  const backupsDir = backupsRoot();
+  const cleared = await clearRestoreJournal(backupsDir);
+  if (!cleared.ok) {
+    return fail(
+      `删不掉恢复日志（${cleared.error}）。请手动删除 ${restoreJournalPath(backupsDir)} 后再试。`,
+    );
+  }
+
+  // 本进程不再尝试自动收尾；提示也清掉，页面回到正常状态
+  recoveryNotice = null;
+  recoveryOnce = Promise.resolve();
+  return { ok: true };
 }
 
 /** 下载：只允许 backups/ 下、名字符合格式、不是链接的 zip */

@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { applyRestoreFromForm, createBackupNow, verifyBackup } from "@/features/backup/service";
+import {
+  applyRestoreFromForm,
+  createBackupNow,
+  discardRestoreJournal,
+  verifyBackup,
+} from "@/features/backup/service";
 import { requireAuth } from "@/lib/security/auth";
 
 /**
@@ -63,4 +68,22 @@ export async function applyRestoreAction(formData: FormData): Promise<void> {
   redirect(
     `/backup?restored=${encodeURIComponent(result.snapshotName)}&deleted=${result.plan.counts.deleted}`,
   );
+}
+
+/**
+ * 「放弃这次恢复日志」：只在自动回滚失败、快照找不回来时用。
+ * 删除后不再自动回滚，写入闸门解除（v2 审计 V2-DATA-01）。
+ */
+export async function discardRestoreJournalAction(formData: FormData): Promise<void> {
+  await requireAuth();
+  if (text(formData, "confirmDiscard") !== "删除") {
+    redirect(errorPath("/backup", "输入「删除」两个字再确认"));
+  }
+
+  const result = await discardRestoreJournal();
+  if (!result.ok) redirect(errorPath("/backup", result.error));
+
+  revalidatePath("/backup");
+  revalidatePath("/settings");
+  redirect("/backup?journal=discarded");
 }

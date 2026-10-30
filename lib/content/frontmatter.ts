@@ -2,6 +2,7 @@ import matter from "gray-matter";
 import { z } from "zod";
 
 import { normalizeArticleBody } from "@/lib/content/body-text";
+import { stripBom } from "@/lib/content/encoding";
 import { ARTICLE_ID_MESSAGE, ARTICLE_ID_REGEX_SOURCE } from "@/lib/security/article-id";
 
 /**
@@ -15,30 +16,46 @@ import { ARTICLE_ID_MESSAGE, ARTICLE_ID_REGEX_SOURCE } from "@/lib/security/arti
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * gray-matter 允许 `---javascript` / `---js` 这类“语言”标记，并用动态执行解析。
- * 这个应用只需要 YAML frontmatter，所以**在进入解析器之前**就把其它语言拒掉。
- * 只放行 YAML/JSON：两者都是数据格式，不会被当代码执行。
+ * frontmatter 的开头只允许这几种写法：
+ *
+ *   `---` / `---yaml` / `---yml` / `---json`（后面可以跟 ASCII 空格/制表符）
+ *
+ * 注意这里**故意不用 `\s`**：`\s` 在 JS 里包含 NBSP、EM SPACE、BOM、垂直制表符……
+ * 而 gray-matter 判断语言时用的是 `String.trim()`，它会把同样的字符全部 trim 掉。
+ * 一旦我们的正则和它“trim 的集合”不一致，`---javascript\u00a0` 就会从缺口里钻过去
+ * （v2 外部审计 V2-SEC-01 实测：旧守卫直接放行，payload 真的执行了）。
+ *
+ * 所以策略改成「不认识就拒绝」，而不是「认识可执行语言才拒绝」。
  */
-const ALLOWED_LANGUAGES = new Set(["yaml", "yml", "json"]);
-const OPENING_LANGUAGE = /^\uFEFF?---[ \t]*([A-Za-z][\w-]*)[ \t]*$/;
+const SAFE_OPENING = /^---[ \t]*(?:(?:yaml|yml|json)[ \t]*)?(?:\r?\n|$)/i;
 
-function assertSafeFrontmatterLanguage(source: string): void {
-  const firstLine = source.split(/\r?\n/, 1)[0] ?? "";
-  const match = OPENING_LANGUAGE.exec(firstLine);
-  if (!match) return;
-  const language = match[1].toLowerCase();
-  if (!ALLOWED_LANGUAGES.has(language)) {
-    throw new Error(`frontmatter 不允许使用可执行语言 “${match[1]}”；只支持 YAML`);
+/**
+ * 把开头规范成纯 `---`，交给 gray-matter 之前先把「语言」抹掉：
+ * 解析器没有任何引擎可选，`javascript` / `js` 再也没有被选中的机会。
+ *
+ * 没有 frontmatter 的文件原样返回（gray-matter 只在开头是分隔符时才做语言检测）。
+ */
+function normalizeFrontmatterSource(source: string): string {
+  const text = stripBom(source);
+  if (!text.startsWith("---")) return text;
+
+  const opening = SAFE_OPENING.exec(text);
+  if (!opening) {
+    throw new Error(
+      "frontmatter 开头只支持 `---`（可带 yaml/yml/json）；检测到可执行语言或不可见空白（NBSP/BOM/垂直制表符等），已拒绝解析",
+    );
   }
+
+  const newline = opening[0].endsWith("\r\n") ? "\r\n" : opening[0].endsWith("\n") ? "\n" : "";
+  return `---${newline}${text.slice(opening[0].length)}`;
 }
 
 /**
- * 唯一允许的解析入口：先拒绝可执行语言，再固定用 YAML 引擎。
- * 不要在这里传用户可控的 `language` / `engines`。
+ * 唯一允许的解析入口：先拒绝一切非 YAML/JSON 的开头，再把语言标记抹掉，
+ * 固定用 YAML 引擎。不要在这里传用户可控的 `language` / `engines`。
  */
 function parseSource(source: string): { data: unknown; content: string } {
-  assertSafeFrontmatterLanguage(source);
-  const parsed = matter(source, { language: "yaml" });
+  const parsed = matter(normalizeFrontmatterSource(source), { language: "yaml" });
   return { data: parsed.data, content: parsed.content };
 }
 
