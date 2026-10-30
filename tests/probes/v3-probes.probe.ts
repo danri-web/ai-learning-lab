@@ -420,7 +420,7 @@ cases.push({
   },
 });
 
-describe("v3 复核探针（30 个样例，只读）", () => {
+describe("v3 复核探针（33 个样例，只读）", () => {
   it("全部 PASS，执行标记始终为 0", async () => {
     await fs.mkdir(TMP, { recursive: true });
     const failures: string[] = [];
