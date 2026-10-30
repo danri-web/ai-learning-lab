@@ -205,7 +205,6 @@ async function deleteResourceUnlocked(id: string, options: StoreOptions): Promis
 
     const removed = existing[index];
     const next = existing.filter((_, i) => i !== index);
-    await writeList(root, next);
 
     const trashDir = path.join(root, ".trash");
     const trashFile = path.join(trashDir, "resources-deleted.jsonl");
@@ -214,6 +213,9 @@ async function deleteResourceUnlocked(id: string, options: StoreOptions): Promis
       return fail("invalid", "回收站路径跑出了内容目录，已取消删除");
     }
 
+    // 顺序不能反（审计 v4 F2）：先把整条记录写进 .trash，再从活动 JSON 移除。
+    // 反过来会出现「活动数据已经没了、恢复副本没写成」，用户看到删除失败，
+    // 记录却已经找不回来。这里 .trash 写失败时活动 JSON 还一个字节没动。
     await fs.mkdir(trashDir, { recursive: true });
     let previous = "";
     try {
@@ -226,6 +228,15 @@ async function deleteResourceUnlocked(id: string, options: StoreOptions): Promis
       resource: removed,
     })}\n`;
     await writeFileAtomic(trashFile, `${previous}${line}`);
+
+    try {
+      await writeList(root, next);
+    } catch (error) {
+      // 活动文件没改成：把刚追加的恢复行撤回，避免「没删掉却留下一条删除记录」。
+      // 撤回也失败时，恢复行仍在，数据至少还在一处（宁可重复，不可丢）。
+      await writeFileAtomic(trashFile, previous).catch(() => {});
+      throw error;
+    }
 
     return { ok: true, id: removed.id, trashFile };
   } catch (error) {

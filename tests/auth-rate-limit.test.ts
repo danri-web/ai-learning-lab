@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { LoginRateLimiter } from "@/lib/security/login-rate-limit";
+import { LoginRateLimiter, loginRateLimitKey } from "@/lib/security/login-rate-limit";
 
 describe("登录失败限速", () => {
+  it("登录限速是全局桶：不接受请求头，换 IP 不能换桶", () => {
+    expect(loginRateLimitKey()).toBe("owner");
+  });
+
   it("连续错 5 次后锁 5 分钟，时间到了自动放行", () => {
     let now = 0;
     const limiter = new LoginRateLimiter({ now: () => now });

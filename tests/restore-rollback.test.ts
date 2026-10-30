@@ -3,6 +3,8 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { formatLocalStamp } from "@/lib/content/clock";
+
 /**
  * 故障注入：让恢复写到第二个文件时失败，检查两件事：
  *   1. 返回失败（不是假成功）
@@ -183,5 +185,60 @@ describe("恢复中途失败 → 自动回滚", () => {
       const loaded = await loadVerifiedBackup(path.join(backupsDir, snapshot));
       expect(loaded.ok).toBe(true);
     }
+  });
+
+  it("删除目的地是普通文件时，不能在写完之后才报「没有改动」", async () => {
+    const created = await createBackup({ contentRoot, backupsDir, now: NOW });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    await write("articles/alpha.md", note("alpha", "Alpha v2"));
+    await fs.rm(path.join(contentRoot, "articles", "beta.md"));
+    await write("articles/gamma.md", note("gamma", "Gamma"));
+
+    // 让恢复要用的 content/.trash/restore-<同一时间戳> 是一个普通文件：
+    // 旧实现先写文章、再检查这个目录，检查失败后外层把 PreflightError 当成
+    // 「一个文件都没写」直接返回，不会回滚。
+    const trashDir = path.join(contentRoot, ".trash");
+    await fs.mkdir(trashDir, { recursive: true });
+    await fs.writeFile(
+      path.join(trashDir, `restore-${formatLocalStamp(NOW)}`),
+      "not a directory",
+      "utf8",
+    );
+
+    const before = await digest();
+    const preview = await previewRestore({
+      contentRoot,
+      backupsDir,
+      name: created.name,
+      includeDeletes: true,
+    });
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+
+    const result = await applyRestore({
+      contentRoot,
+      backupsDir,
+      name: created.name,
+      planHash: preview.plan.planHash,
+      includeDeletes: true,
+      confirm: RESTORE_CONFIRM_TEXT,
+      now: NOW,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("没有改动");
+    // 关键：报「没有改动」就必须真的一个字节都没动
+    expect(await digest()).toEqual(before);
+    expect(await fs.readFile(path.join(contentRoot, "articles", "alpha.md"), "utf8")).toContain(
+      "Alpha v2",
+    );
+    expect(
+      await fs.stat(path.join(contentRoot, "articles", "beta.md")).catch(() => null),
+    ).toBeNull();
+    expect(
+      await fs.stat(path.join(contentRoot, "articles", "gamma.md")).catch(() => null),
+    ).toBeTruthy();
   });
 });

@@ -161,6 +161,15 @@ async function applyPlan(options: {
     }
   }
 
+  // 删除目的地也必须在写第一个字节之前确认：否则文章已经写完，才发现
+  // `content/.trash/restore-<时间>` 是普通文件；外层会把 PreflightError 当成
+  // 「一个文件都没写」而跳过回滚（审计 v4 F1）。
+  const trashRoot = deletes.length > 0 ? path.join(root, ".trash", options.trashLabel) : null;
+  if (trashRoot) {
+    await ensureSafeDirectory(path.join(root, ".trash"));
+    await ensureSafeDirectory(trashRoot);
+  }
+
   for (const entry of writes) {
     const bytes = backup.files.get(entry.path);
     if (!bytes) throw new Error(`备份里缺少 ${entry.path} 的内容`);
@@ -168,10 +177,7 @@ async function applyPlan(options: {
   }
 
   let deletedTo: string | null = null;
-  if (deletes.length > 0) {
-    const trashRoot = path.join(root, ".trash", options.trashLabel);
-    await ensureSafeDirectory(path.join(root, ".trash"));
-    await ensureSafeDirectory(trashRoot);
+  if (trashRoot) {
     for (const entry of deletes) {
       const target = contentPathForEntry(root, entry.path);
       const relative = path.relative(root, target);

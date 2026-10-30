@@ -6,7 +6,7 @@ import {
   requestOrigin,
   safeNextPath,
 } from "@/lib/security/auth-config";
-import { loginRateLimiter } from "@/lib/security/login-rate-limit";
+import { loginRateLimitKey, loginRateLimiter } from "@/lib/security/login-rate-limit";
 import { verifyPassword } from "@/lib/security/password";
 import { SESSION_COOKIE, sessionCookieOptions, signSession } from "@/lib/security/session";
 
@@ -17,19 +17,13 @@ import { SESSION_COOKIE, sessionCookieOptions, signSession } from "@/lib/securit
  *   - 只在本机模式之外工作；本机模式直接回首页（不需要登录）
  *   - Origin 不等于本站就拒绝（CSRF）；同时接受「协议 + Host 头」的 origin，
  *     否则 `-H 0.0.0.0` 下 request.url 是 0.0.0.0、浏览器是 localhost，合法登录会被误拒
- *   - 连续失败 5 次锁 5 分钟（进程内；见 ADR 残余风险）
+ *   - 连续失败 5 次锁 5 分钟（进程内全局桶；见 ADR 残余风险）
  *   - cookie 是 HttpOnly + SameSite=Lax + 12 小时；刷新页面不会重置过期时间
  */
 
 function redirect(request: Request, path: string): NextResponse {
   const origin = requestOrigin(request.headers.get("host"), request.url);
   return NextResponse.redirect(new URL(path, origin), 303);
-}
-
-function clientKey(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]?.trim() || "unknown";
-  return request.headers.get("x-real-ip") ?? "local";
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -55,7 +49,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     typeof form.get("next") === "string" ? (form.get("next") as string) : null,
   );
 
-  const rateKey = clientKey(request);
+  // 全局桶：不读客户端可改的 X-Forwarded-For / X-Real-IP（审计 v4 F3）
+  const rateKey = loginRateLimitKey();
   const decision = loginRateLimiter.check(rateKey);
   if (!decision.allowed) {
     const response = redirect(request, "/login?error=rate");

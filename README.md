@@ -159,7 +159,7 @@ lib/security/      文章 id 规则、路径闸门、资源 URL 白名单、会�
 lib/fs/            原子写入（临时文件 + fsync + rename）、进程内写锁
 proxy.ts           每个请求的第一道门（局域网认证 / 本机绑定 fail closed）
 scripts/           auth-lib / set-password / start-lan / env-file
-tests/             Vitest 单元测试（437 条，其中 1 条在本机会 skipped）
+tests/             Vitest 单元测试（443 条，其中 1 条在本机会 skipped）
 docs/              需求书、架构决策、截图
 backups/           备份 zip（gitignored；明文，别放公开同步盘）
 public/            静态资源
@@ -214,7 +214,7 @@ public/            静态资源
 - **局域网必须显式打开**：只走 `npm run start:lan`（生产构建 + `ALLOW_LAN=1` + 绑定 `0.0.0.0`）；口令哈希或会话密钥缺一个就拒绝启动，不会退回「不登录也能看」
 - **认证覆盖读取与写入**：`proxy.ts`（第一道）→ 工作区布局（第二道）→ 每个 Server Action / 受保护 Route Handler 里的 `requireAuth()`（第三道）；`/login`、`/api/auth/login`、`/api/auth/logout` 之外全部要会话
 - **会话**：HttpOnly + SameSite=Lax + 12 小时；HMAC 签名，改 payload/签名/换密钥都会失效；登出清 cookie
-- **口令**：只存 scrypt 哈希在 `.env.local`（`scrypt:N:r:p:salt:hash`，用 `:` 避免 Next 的 `$` 变量展开）；登录连续失败 5 次锁 5 分钟
+- **口令**：只存 scrypt 哈希在 `.env.local`（`scrypt:N:r:p:salt:hash`，用 `:` 避免 Next 的 `$` 变量展开）；登录连续失败 5 次锁 5 分钟（全局桶，不按 IP；换 `X-Forwarded-For` 不能绕过）
 - **备份**：`backups/` 已 gitignore；zip 是**明文**，不要放公开同步盘，也不要分享；备份**不含** `.env.local`
 - **不提供服务端抓取任意 URL 的能力**（避免 SSRF），外部链接只允许 http / https
 - **安全响应头**：X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、COOP/CORP；CSP 暂未启用（原因见 ADR D12）
@@ -317,14 +317,14 @@ public/            静态资源
 **认证与局域网（D12）**
 
 - 默认仍只听 `127.0.0.1`；`npm run start:lan` 用**生产构建** + 显式 `ALLOW_LAN=1`，启动前检查 `LAB_PASSWORD_HASH` / `SESSION_SECRET`，缺一个就退出
-- 口令只存 scrypt 哈希（`scrypt:N:r:p:salt:hash`）；会话是 HMAC 签名的 HttpOnly cookie，12 小时；登出清 cookie；换 `SESSION_SECRET` = 全端退出；登录失败 5 次锁 5 分钟
+- 口令只存 scrypt 哈希（`scrypt:N:r:p:salt:hash`）；会话是 HMAC 签名的 HttpOnly cookie，12 小时；登出清 cookie；换 `SESSION_SECRET` = 全端退出；登录失败 5 次锁 5 分钟（全局桶，不信任客户端转发头）
 - **三道门**：`proxy.ts` 每个请求先过（页面、RSC、action POST 都算）→ `(workspace)/layout.tsx` 的 `requirePageAuth()` → 每个 Server Action / 受保护 Route Handler 里的 `requireAuth()`。这样「页面拦了、action 没拦」不会发生
 - **fail closed**：局域网模式配置不齐 → 503 说明页；本机模式发现非本机 Host（有人绕过脚本手动绑 `0.0.0.0`）→ 503，不假装安全
 - **Windows / Android**：README 上面给了 `auth:set-password` → `build` → `start:lan` 的步骤和**只放行专用网络**的防火墙命令；手机连同一 Wi-Fi，用终端打印的局域网 IP 访问
 
 **断言与实测**
 
-- 断言 234 → **437 条**（436 通过 + 1 条文件级 symlink skipped）：备份条目 46、manifest/diff 23、备份读写 16、恢复 9、回滚故障注入 2、会话 16、口令 13、访问配置 42、登录限速 4、proxy 12、覆盖关系 7、脚本兼容 5，以及启动/源码闸门的增量
+- 断言 234 → **443 条**（442 通过 + 1 条文件级 symlink skipped）：备份条目 46、manifest/diff 23、备份读写 16、恢复 9、回滚故障注入 3、删除恢复 4、会话 16、口令 13、访问配置 42、登录限速 5、proxy 12、覆盖关系 7、脚本兼容 5，以及启动/源码闸门的增量
 - 真浏览器点过：建备份（6 个文件 / 3.4 KB，自检通过）→ 改一篇临时笔记 → 预览「覆盖 1」→ 确认恢复（自动生成 `pre-restore` 快照）→ 对快照点「回滚」→ 内容回到改前 → 删除临时笔记与测试备份
 - 真机网络：默认 `127.0.0.1` 从局域网 IP `connection refused`；`start:lan` 未登录请求 → 307 到 `/login`、action POST → 401、body 里 0 处笔记标题；用 curl 在局域网 IP 登录后拿到 200 与笔记内容；登出后同一 cookie 再请求回到 307
 - 构建 0 警告（Turbopack 对运行时路径的 tracing 警告用 `/*turbopackIgnore*/` 消掉）
@@ -335,3 +335,16 @@ public/            静态资源
 2. **`next start -H 0.0.0.0` 时 `request.url` 可能是 `http://0.0.0.0:3100`**：用 `request.url` 做 Origin 比较或跳转，会把合法登录拒掉/把浏览器送到 `0.0.0.0`。改成优先用 Host 头还原 origin；浏览器在代理/扩展环境下还可能发 `Origin: null`，按「缺失」处理
 3. **同一路由段不能同时有 `page.tsx` 和 `route.ts`**：登录页放 `/login`，表单 POST 放 `/api/auth/login`
 4. **Turbopack 会把运行时拼接的路径当成「追踪整个项目」**：`path.join` 上加 `/*turbopackIgnore*/`，否则 build 出 4 条警告
+
+### 外部审计 v4（2026-10-30）：3 条发现全为真，已修
+
+审计包 v4（`8ea9497`）的三条都先写复现、看着它失败，再改：
+
+| # | 发现 | 复现方式 | 修法 | 回归断言 |
+| --- | --- | --- | --- | --- |
+| F1 | 恢复先写文章、再检查删除目的地；检查失败时外层把 `PreflightError` 当成「一个文件都没写」跳过回滚 | 固定时间戳 + 在 `content/.trash/restore-<stamp>` 放一个普通文件：文章已写入，错误却说「没有改动」 | 删除目的地也在写第一个字节前预检（`restore-store.ts`） | 「说没有改动就必须字节不变」 |
+| F2 | 资源/任务先删活动 JSON、再追加 `.trash`；第二步失败时记录已经没了 | 把 `.trash` 做成普通文件：删除返回失败，但 `resources.json` / `tasks.json` 已空 | 先写 `.trash`，再写活动 JSON；活动写失败时撤回刚追加的行 | 4 条：两个 store ×（trash 写失败 / 活动写失败） |
+| F3 | 登录限速按 `X-Forwarded-For` 分桶，换头可绕过 5 次锁 | 源码：`clientKey` 读客户端可改的转发头 | 全局桶，不读转发头；代价是攻击者可故意失败锁住房主 5 分钟（D13） | 桶 key 固定为 `owner` |
+
+> 断言 437 → **443**；`npm run verify` 全绿。F3 的回归是单元级（key 不再来自请求头），
+> 真机 LAN 发请求放到阶段 8 的 E2E 里补。

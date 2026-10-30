@@ -240,7 +240,6 @@ async function deleteTaskUnlocked(id: string, options: StoreOptions): Promise<De
 
     const removed = existing[index];
     const next = existing.filter((_, i) => i !== index);
-    await writeList(root, next);
 
     const trashDir = path.join(root, ".trash");
     const trashFile = path.join(trashDir, "tasks-deleted.jsonl");
@@ -249,6 +248,8 @@ async function deleteTaskUnlocked(id: string, options: StoreOptions): Promise<De
       return fail("invalid", "回收站路径跑出了内容目录，已取消删除");
     }
 
+    // 同 resources-store（审计 v4 F2）：先写恢复副本，再移除活动记录。
+    // .trash 不可写时活动 JSON 不动；活动文件写失败时把刚追加的行撤回。
     await fs.mkdir(trashDir, { recursive: true });
     let previous = "";
     try {
@@ -258,6 +259,13 @@ async function deleteTaskUnlocked(id: string, options: StoreOptions): Promise<De
     }
     const line = `${JSON.stringify({ deletedAt: formatLocalStamp(now), task: removed })}\n`;
     await writeFileAtomic(trashFile, `${previous}${line}`);
+
+    try {
+      await writeList(root, next);
+    } catch (error) {
+      await writeFileAtomic(trashFile, previous).catch(() => {});
+      throw error;
+    }
 
     return { ok: true, id: removed.id, trashFile };
   } catch (error) {

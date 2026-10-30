@@ -85,3 +85,17 @@ export class LoginRateLimiter {
 
 /** 登录接口共用的一个实例（模块级；Next 开发模式热重载会重建，可接受） */
 export const loginRateLimiter = new LoginRateLimiter();
+
+/**
+ * 登录限速的桶 key（审计 v4 F3）。
+ *
+ * `next start` 是直接暴露的，前面没有可信反向代理；`X-Forwarded-For` / `X-Real-IP`
+ * 都是客户端可改的。按它们分桶等于让攻击者换头绕过 5 次锁。
+ *
+ * 单用户应用用**全局桶**：所有登录尝试共用同一个计数。代价是攻击者可以故意失败
+ * 把房主锁 5 分钟（可用性 DoS），但换头不能绕过穷举；两者相权，先保「不可绕过」。
+ * 如果将来真的放到可信反向代理后面，再加 `TRUST_PROXY=1` 的显式分支，而不是现在猜。
+ */
+export function loginRateLimitKey(): string {
+  return "owner";
+}
