@@ -38,6 +38,7 @@ updatedAt: "2026-10-27"
 - 以 `_` 开头或以 `.` 开头的文件/目录被跳过（模板、草稿、`.trash/`）
 - frontmatter 写错的笔记只会单独报错（列表顶上会提示），不会让整页崩掉
 - 删除 = 移到 `content/articles/.trash/`，不是真删；想找回来直接拖回来
+- 内部链接就是普通 Markdown 链接：`[另一篇](/knowledge/transformer-basics)`（`[[双向链接]]` 属于 P1，本阶段不做）；外链自动加 `target="_blank" rel="noopener noreferrer"`
 
 > `content/articles/` **不在这个仓库里**（主仓库是公开的，笔记属于你自己的私有仓库 —— 见 [docs/架构决策.md](docs/架构决策.md) D5）。
 
