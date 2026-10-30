@@ -19,8 +19,15 @@ import {
   type BackupManifest,
   type RestorePlan,
 } from "@/lib/content/backup-format";
+import {
+  BACKUP_KEEP_COUNT,
+  BACKUP_PRUNE_CONFIRM_TEXT,
+  selectExpiredBackups,
+} from "@/lib/content/backup-retention";
 import { contentRoot } from "@/lib/content/resources";
 import { checkBackupPayload } from "@/lib/content/backup-validate";
+import { pendingRestoreMessage } from "@/lib/content/restore-gate";
+import { RESTORE_JOURNAL_NAME } from "@/lib/content/restore-journal";
 import { writeFileAtomic } from "@/lib/fs/atomic-write";
 import { serialize } from "@/lib/fs/mutex";
 import {
@@ -621,6 +628,198 @@ export async function verifyBackupByName(options: {
     manifest: loaded.backup.manifest,
     fileCount: loaded.backup.manifest.files.length,
   };
+}
+
+/* ────────────────────────── P1：清理旧备份 ────────────────────────── */
+
+export type BackupPruneFailure = {
+  ok: false;
+  reason: "blocked" | "stale" | "confirm" | "io";
+  error: string;
+};
+
+export type BackupPrunePreview = {
+  ok: true;
+  /** 保留的（新的在前） */
+  keep: string[];
+  /** 可删的（旧的在前） */
+  expired: { name: string; sizeBytes: number; modifiedAt: Date }[];
+  /** 超期但损坏，只列出不删 */
+  damaged: { name: string; sizeBytes: number; modifiedAt: Date; error: string }[];
+  /** 没动的：恢复前快照、恢复日志、白名单外名字、不是普通文件 */
+  ignored: { name: string; reason: string }[];
+  planHash: string;
+  /** 可删备份的总字节 */
+  totalBytes: number;
+};
+
+export type BackupPruneResult =
+  | {
+      ok: true;
+      removed: string[];
+      failed: { name: string; error: string }[];
+      preview: BackupPrunePreview;
+    }
+  | BackupPruneFailure;
+
+type BackupDirFile = { name: string; sizeBytes: number; modifiedAt: Date };
+
+/**
+ * 扫 `backups/`：只把「普通文件 + 名字像手动备份」的收进 manual，
+ * 其余（快照、恢复日志、未知名字、目录/链接）进 ignored，让预览能说清楚为什么没动。
+ */
+async function scanBackupDir(dir: string): Promise<{
+  manual: BackupDirFile[];
+  ignored: { name: string; reason: string }[];
+}> {
+  const stat = await fs.lstat(/*turbopackIgnore: true*/ dir).catch(() => null);
+  if (!stat) return { manual: [], ignored: [] };
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error("backups/ 不是普通目录（可能是链接/文件）");
+  }
+
+  const manual: BackupDirFile[] = [];
+  const ignored: { name: string; reason: string }[] = [];
+
+  for (const name of await fs.readdir(/*turbopackIgnore: true*/ dir)) {
+    const full = path.join(/*turbopackIgnore: true*/ dir, name);
+    const entry = await fs.lstat(/*turbopackIgnore: true*/ full).catch(() => null);
+    if (!entry) {
+      ignored.push({ name, reason: "读不到（可能刚被删）" });
+      continue;
+    }
+
+    if (isBackupFileName(name) && name.startsWith("pre-restore-")) {
+      ignored.push({ name, reason: "恢复前快照，不参与清理" });
+      continue;
+    }
+    if (isBackupFileName(name)) {
+      if (entry.isSymbolicLink() || !entry.isFile()) {
+        ignored.push({ name, reason: "不是普通文件（目录/链接）" });
+        continue;
+      }
+      manual.push({ name, sizeBytes: entry.size, modifiedAt: entry.mtime });
+      continue;
+    }
+    if (name === RESTORE_JOURNAL_NAME) {
+      ignored.push({ name, reason: "恢复日志，不动" });
+      continue;
+    }
+    ignored.push({ name, reason: "不是本应用生成的备份名" });
+  }
+
+  return { manual, ignored };
+}
+
+export async function previewBackupPrune(
+  options: { backupsDir?: string; keep?: number } = {},
+): Promise<BackupPrunePreview | BackupPruneFailure> {
+  const backupsDir = options.backupsDir ?? backupsRoot();
+  const keep = options.keep ?? BACKUP_KEEP_COUNT;
+
+  // 有待收尾的恢复时整条拒绝：清理不动备份，但也不该在混合状态里继续做任何事
+  const blocked = await pendingRestoreMessage(backupsDir);
+  if (blocked) return { ok: false, reason: "blocked", error: blocked };
+
+  try {
+    const scan = await scanBackupDir(backupsDir);
+    const byName = new Map(scan.manual.map((item) => [item.name, item]));
+
+    // 先按「全都健康」算一遍候选，只给超期项读 manifest：
+    // 100+ 份备份时不需要为了预览把每一份 zip 都打开。
+    const first = selectExpiredBackups(
+      scan.manual.map((item) => ({ name: item.name, damaged: false })),
+      keep,
+    );
+    const damagedErrors = new Map<string, string>();
+    for (const name of first.expired) {
+      const checked = await readBackupManifest(
+        path.join(/*turbopackIgnore: true*/ backupsDir, name),
+      );
+      if (!checked.ok) damagedErrors.set(name, checked.error);
+    }
+
+    const final = selectExpiredBackups(
+      scan.manual.map((item) => ({ name: item.name, damaged: damagedErrors.has(item.name) })),
+      keep,
+    );
+
+    const expired = final.expired.flatMap((name) => {
+      const item = byName.get(name);
+      return item ? [{ ...item }] : [];
+    });
+    const damaged = final.damaged.flatMap((name) => {
+      const item = byName.get(name);
+      return item ? [{ ...item, error: damagedErrors.get(name) ?? "manifest 读不出来" }] : [];
+    });
+
+    return {
+      ok: true,
+      keep: final.keep,
+      expired,
+      damaged,
+      ignored: scan.ignored,
+      planHash: final.planHash,
+      totalBytes: expired.reduce((sum, item) => sum + item.sizeBytes, 0),
+    };
+  } catch (error) {
+    return { ok: false, reason: "io", error: `读取备份目录失败：${message(error)}` };
+  }
+}
+
+export function pruneBackups(options: {
+  planHash: string;
+  confirm: string;
+  backupsDir?: string;
+  keep?: number;
+}): Promise<BackupPruneResult> {
+  return serialize(() => pruneBackupsUnlocked(options));
+}
+
+async function pruneBackupsUnlocked(options: {
+  planHash: string;
+  confirm: string;
+  backupsDir?: string;
+  keep?: number;
+}): Promise<BackupPruneResult> {
+  if (options.confirm !== BACKUP_PRUNE_CONFIRM_TEXT) {
+    return {
+      ok: false,
+      reason: "confirm",
+      error: `输入「${BACKUP_PRUNE_CONFIRM_TEXT}」两个字再确认`,
+    };
+  }
+
+  const preview = await previewBackupPrune({
+    backupsDir: options.backupsDir,
+    keep: options.keep,
+  });
+  if (!preview.ok) return preview;
+  if (preview.planHash !== options.planHash) {
+    return {
+      ok: false,
+      reason: "stale",
+      error: "备份列表在预览之后变了，请重新预览再清理",
+    };
+  }
+
+  const backupsDir = options.backupsDir ?? backupsRoot();
+  const removed: string[] = [];
+  const failed: { name: string; error: string }[] = [];
+
+  for (const item of preview.expired) {
+    try {
+      // 再走一遍 resolveBackupFile：名字、目录、普通文件、非空，全部重新确认
+      const resolved = await resolveBackupFile(backupsDir, item.name);
+      if (!resolved.ok) throw new Error(resolved.error);
+      await fs.unlink(/*turbopackIgnore: true*/ resolved.path);
+      removed.push(item.name);
+    } catch (error) {
+      failed.push({ name: item.name, error: message(error) });
+    }
+  }
+
+  return { ok: true, removed, failed, preview };
 }
 
 /** 恢复后重新扫 content/ 与备份比对（失败就回滚） */

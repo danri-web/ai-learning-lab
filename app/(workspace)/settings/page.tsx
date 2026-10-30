@@ -173,6 +173,11 @@ export default async function SettingsPage() {
           value="在备份页对 pre-restore-* 点「回滚」"
           note="快照与普通备份同格式，能校验、能下载、能再恢复。"
         />
+        <Row
+          label="清理"
+          value="手动：备份保留最近 10 份；回收站保留 90 天"
+          note="都在备份页先预览、再勾选并输入「清理」；没有后台自动删除。"
+        />
       </Section>
 
       <Section title="外观">

@@ -5,7 +5,13 @@ import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { formatBytes, isBackupFileName, type RestorePlanEntry } from "@/lib/content/backup-format";
-import { loadBackupOverview, previewRestoreByName } from "@/features/backup/service";
+import {
+  loadBackupOverview,
+  loadBackupPrunePreview,
+  loadTrashCleanupPreview,
+  previewRestoreByName,
+} from "@/features/backup/service";
+import { CleanupCards } from "./cleanup-cards";
 import {
   applyRestoreAction,
   createBackupAction,
@@ -25,6 +31,10 @@ type Params = {
   includeDeletes?: string;
   error?: string;
   journal?: string;
+  prune?: string;
+  pruned?: string;
+  removed?: string;
+  failed?: string;
 };
 
 function Notice({ tone, children }: { tone: "ok" | "warn" | "error"; children: React.ReactNode }) {
@@ -92,7 +102,15 @@ export default async function BackupPage({ searchParams }: { searchParams: Promi
   const includeDeletes = params.includeDeletes === "1";
   const preview = restoreName ? await previewRestoreByName(restoreName, includeDeletes) : null;
 
+  const pruneWhat =
+    params.prune === "backups" || params.prune === "trash" ? params.prune : null;
+  const backupPrune = pruneWhat === "backups" ? await loadBackupPrunePreview() : null;
+  const trashPrune = pruneWhat === "trash" ? await loadTrashCleanupPreview() : null;
+
+  const pruned = params.pruned === "backups" || params.pruned === "trash" ? params.pruned : null;
   const deletedCount = Number(params.deleted ?? "0");
+  const removedCount = Number(params.removed ?? "0");
+  const failedCount = Number(params.failed ?? "0");
   const errorMessage = decodeError(params.error);
 
   return (
@@ -212,6 +230,19 @@ export default async function BackupPage({ searchParams }: { searchParams: Promi
         </Notice>
       ) : null}
 
+      {pruned ? (
+        <Notice tone={failedCount > 0 ? "warn" : "ok"}>
+          <p className="font-medium">
+            {pruned === "backups" ? "旧备份清理完成" : "回收站清理完成"}：删掉 {removedCount} 项
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            {failedCount > 0
+              ? `有 ${failedCount} 项没删掉，错误见下面的红色提示；剩下的条目还在预览里，可以再试。`
+              : "列表已重新读盘；恢复前快照与恢复日志没有动。"}
+          </p>
+        </Notice>
+      ) : null}
+
       {errorMessage ? (
         <Notice tone="error">
           <p className="flex items-start gap-2 font-medium">
@@ -273,6 +304,8 @@ export default async function BackupPage({ searchParams }: { searchParams: Promi
           </p>
         </div>
       </details>
+
+      <CleanupCards backupPreview={backupPrune} trashPreview={trashPrune} />
 
       {restoreName && preview ? (
         <section

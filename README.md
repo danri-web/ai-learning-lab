@@ -2,7 +2,7 @@
 
 一个本地优先的 AI 学习、知识管理与资源收藏工作台。
 
-**当前状态：阶段 1–8 开发完成（2026-10-30）；外部验收审计 v1/v2 与复核 v3b 的判定都是 NOT ACCEPTED，给出的具体缺陷已按复现修完（Unicode/重复 BOM 绕过、延迟恢复、日志查询失败）。** 笔记能新建/编辑/删除（中文标题直接当文件名）；资源收藏能增删改、按类型/分类/标签筛选、三种排序，并能挂到某篇笔记上。链接只接受 http/https，应用**从不抓取**你填的地址。`Ctrl+K` 能搜全部笔记与资源：分组、摘要、高亮、`↑↓`/`Enter`/`Esc` 键盘操作，**不建索引**（每次搜都读文件，所以永远不会有"索引过期"）。学习任务有 Todo / 进行中 / 已完成三档、截止日期（会算逾期）、可关联多篇笔记与多条资源；总览页的数字全部从文件现算。阶段 7 把 `content/` 打成带清单的 zip（每个文件 sha256），恢复前先预览、先留快照、失败自动回滚；之后又补了**恢复日志**：恢复写到一半被强杀，**下次启动**会自动回到恢复前，收尾前写入会被暂停（DATA-01 / D18）。局域网默认关闭，打开后用口令登录，所有页面与写入都要过同一道门。阶段 8 补上了 Playwright 端到端测试（系统 Chrome；Windows 桌面 + Pixel 7 模拟）、axe 可访问性扫描（WCAG 2 A/AA，九个界面 0 命中）、性能基线、备份恢复的完整 E2E，以及 `app/error.tsx` 错误边界。**交付门槛是 `npm run verify`（536 条断言）加 `npm run test:e2e`。**
+**当前状态：阶段 1–8 开发完成（2026-10-30）；外部验收审计 v1/v2 与复核 v3b 的判定都是 NOT ACCEPTED，给出的具体缺陷已按复现修完（Unicode/重复 BOM 绕过、延迟恢复、日志查询失败）。** 笔记能新建/编辑/删除（中文标题直接当文件名）；资源收藏能增删改、按类型/分类/标签筛选、三种排序，并能挂到某篇笔记上。链接只接受 http/https，应用**从不抓取**你填的地址。`Ctrl+K` 能搜全部笔记与资源：分组、摘要、高亮、`↑↓`/`Enter`/`Esc` 键盘操作，**不建索引**（每次搜都读文件，所以永远不会有"索引过期"）。学习任务有 Todo / 进行中 / 已完成三档、截止日期（会算逾期）、可关联多篇笔记与多条资源；总览页的数字全部从文件现算。阶段 7 把 `content/` 打成带清单的 zip（每个文件 sha256），恢复前先预览、先留快照、失败自动回滚；之后又补了**恢复日志**：恢复写到一半被强杀，**下次启动**会自动回到恢复前，收尾前写入会被暂停（DATA-01 / D18）。局域网默认关闭，打开后用口令登录，所有页面与写入都要过同一道门。阶段 8 补上了 Playwright 端到端测试（系统 Chrome；Windows 桌面 + Pixel 7 模拟）、axe 可访问性扫描（WCAG 2 A/AA，九个界面 0 命中）、性能基线、备份恢复的完整 E2E，以及 `app/error.tsx` 错误边界。阶段 8 之后只做了 P1 清理（手动：备份保留最近 10 份、`.trash` 清 90 天前条目，D22），没有阶段 9。**交付门槛是 `npm run verify`（569 条断言）加 `npm run test:e2e`。**
 
 ![总览](docs/screenshot-dashboard.png)
 
@@ -144,16 +144,16 @@ npm run format:check # Prettier 只检查
 
 ## 测试与发布（阶段 8）
 
-交付门槛是两条命令：`npm run verify`（**536 条断言：535 通过 + 1 跳过**，跳过的是本机建不出的文件级符号链接）和 `npm run test:e2e`（Playwright）。端到端**不在 `verify` 里**：它要起服务、会改测试数据、单轮约 2.5 分钟，塞进每次提交会让人开始跳过闸门。
+交付门槛是两条命令：`npm run verify`（**569 条断言：568 通过 + 1 跳过**，跳过的是本机建不出的文件级符号链接）和 `npm run test:e2e`（Playwright，**15 实跑 + 9 按设计跳过**）。端到端**不在 `verify` 里**：它要起服务、会改测试数据、单轮约 2.5 分钟，塞进每次提交会让人开始跳过闸门。
 
-另有一条**外部复核用的只读探针**（不属于交付门槛，也不计入 536）：`npm run audit:probes`。33 个探针样例 + 6 个命名回归套件（7 个文件、57 条），覆盖 frontmatter 的 Unicode 空白/重复 BOM/无换行、读/保存/恢复预览三个入口、写入闸门、查询失败、放弃排队、恢复状态机与缓存边界；输出一页 `PASS/FAIL`，只读、不联网、跑完自动清临时目录。详见 [`scripts/audit/README.md`](scripts/audit/README.md)。
+另有一条**外部复核用的只读探针**（不属于交付门槛，也不计入 569）：`npm run audit:probes`。33 个探针样例 + 6 个命名回归套件（7 个文件、57 条），覆盖 frontmatter 的 Unicode 空白/重复 BOM/无换行、读/保存/恢复预览三个入口、写入闸门、查询失败、放弃排队、恢复状态机与缓存边界；输出一页 `PASS/FAIL`，只读、不联网、跑完自动清临时目录。详见 [`scripts/audit/README.md`](scripts/audit/README.md)。
 
 ### 端到端测试怎么隔离数据
 
 E2E 会新建/编辑/删除笔记、建备份、真的执行恢复 —— 这些只能发生在一次性副本里：
 
 - `scripts/e2e-server.mjs` 先把**当前工作树**（含未提交改动）复制到系统临时目录，再复制 `node_modules`（Windows 用 `robocopy /MT`，36k 文件约 6 秒；Turbopack 不接受指向工作区外的目录联接，实测会报「Could not find the Next.js package」）
-- 用 `e2e/fixtures/content/` 覆盖副本的 `content/`：2 篇夹具笔记（含中文 id）、2 条资源、2 条任务
+- 用 `e2e/fixtures/content/` 覆盖副本的 `content/`：2 篇夹具笔记（含中文 id）、2 条资源、2 条任务、`articles/.trash/` 里一条过期笔记与 `.trash/resources-deleted.jsonl` 里一过期一未过期两行（P1 清理用例专用）
 - **安全闸门**：词法 + 物理两层路径检查（目录联接别名也拦）、`app/` 必须是普通目录且带所有权标记才允许删除、同一份副本用 PID 锁 + 回收守卫串行（死锁安全回收；空锁 fail closed，守卫残留只挡旧锁回收）；`E2E_REUSE=1` 只复用构建并重置 `content/` 与 `backups/`。覆盖分两层：**子进程级安全闸门 13 条**（`tests/e2e-safety.test.ts`）+ **同进程内确定性锁交错 5 条**（`tests/e2e-lock.test.ts`，barrier 钩子，不是两个 OS 进程）；端口固定 **3210（本机）/ 3211（局域网模式）**，不碰真实 dev 的 3000
 - 3211 用 `ALLOW_LAN=1` + 测试口令 + 随机 `SESSION_SECRET` 起第二个实例，专门验认证
 - 想改测试时用 `E2E_REUSE=1 npm run test:e2e`（复用上次副本与构建，省掉 70 秒构建）；`E2E_SCRATCH=<dir>` 可以指定副本位置
@@ -166,6 +166,7 @@ E2E 会新建/编辑/删除笔记、建备份、真的执行恢复 —— 这些
 | `10-notes` | Windows | 新建（中文标题 → 中文文件名）→ 编辑 → `Ctrl+K` 搜到 → 删除进回收站 |
 | `20-resources-tasks` | Windows | `javascript:` 链接被服务端拒绝；合法链接收藏/删除；任务新建、列表改状态、删除；**校验失败后 select/radio 不被清空**（回归） |
 | `30-backup-restore` | Windows | 改笔记 → 备份 → 再改 → 预览 → 确认恢复 → 内容回退 → 对 `pre-restore` 快照回滚 |
+| `31-backup-cleanup` | Windows | 造 11 份以上手动备份 → 预览 → 勾选 + 输入「清理」→ 只剩最新 10 份；`.trash` 只清 90 天前的笔记与超期 JSONL 行 |
 | `40-auth` | Windows（3211） | 未登录页面 307、action POST 401、错误口令提示、登录后能读、登出后回到 307 |
 | `50-a11y` | Windows | axe 扫 7 个页面 + 搜索弹窗 + 登录页（WCAG 2 A/AA） |
 | `60-perf` | Windows | 五个页面的 Navigation Timing + 搜索弹窗里的真实毫秒数 |
@@ -244,7 +245,7 @@ proxy.ts           每个请求的第一道门（局域网认证 / 本机绑定 
 scripts/           auth-lib / set-password / start-lan / env-file / e2e-server（隔离副本）
 e2e/               Playwright 用例、共享断言、fixtures（假笔记/资源/任务，不进 content/）
 playwright.config.ts  两个 project（Windows Chrome / Pixel 7）+ 自动起隔离服务
-tests/             Vitest 单元测试（536 条，其中 1 条在本机会 skipped）
+tests/             Vitest 单元测试（569 条，其中 1 条在本机会 skipped）
 docs/              需求书、架构决策、操作指南、截图
 backups/           备份 zip（gitignored；明文，别放公开同步盘）
 public/            静态资源
@@ -465,7 +466,7 @@ public/            静态资源
 | **QA-03**：移动端没有目录 | 真 | 笔记详情窄屏加可折叠目录 |
 | **DATA-01**：恢复不是崩溃原子 | 真限制 | **已修**：`backups/restore-journal.json`（`applying` / `verified`）+ **进程启动时**自动收尾（v2 审计后从「打开备份页才收尾」提前）；未收尾时写入闸门挡住所有正常写入；坏日志 / 缺快照 fail closed，可在 `/backup` 放弃日志；17 条恢复 + 5 条闸门测试（ADR **D17/D18**）。仍不是目录级原子 |
 | **REQ-01**：SQLite/Drizzle/migrations/FTS5/Shiki/文件名 id 与最初需求书不符 | 真（对最初需求书） | **已按 A 正式变更**：`docs/需求变更-2026-10-30.md`；安全与功能验收不放宽 |
-| 测试 NOT TESTED | 审计方环境 `npm ci` EPERM | 不是应用失败；本项目实测 `verify` 536 条 + E2E 13/7 全绿。独立验收仍需能装依赖的机器 |
+| 测试 NOT TESTED | 审计方环境 `npm ci` EPERM | 不是应用失败；本项目实测 `verify` 569 条 + E2E 全绿。独立验收仍需能装依赖的机器 |
 
 > **外部验收审计 v2（2026-10-30 晚）**：架构简化被接受，但安全判定仍 NOT ACCEPTED，给了两个具体缺陷：
 > ① `---javascript\u00a0` 这类 Unicode 空白绕过 frontmatter 守卫，payload 在真实的
@@ -506,7 +507,7 @@ public/            静态资源
   `discardPendingRestore()`（与恢复共用 `serialize`），不会插队（`tests/restore-discard.test.ts` 2 条）。
 - **服务层写入真的被挡住**：`tests/service-write-gate.test.ts` 4 条 mock 写入层，证明闸门拦截时
   写入函数一次都没被调用，放行时才调用 —— 不再只断言“消息长什么样”。
-- 探针增至 **33 个**，并同时跑 6 个命名回归套件（7 文件 / 57 条），仍不计入 536 条断言。
+- 探针增至 **33 个**，并同时跑 6 个命名回归套件（7 文件 / 57 条），仍不计入 569 条断言。
 
 ### v3c 复核修复：检查结果不缓存、无换行 fixture（2026-10-30）
 
@@ -555,7 +556,8 @@ public/            静态资源
 | 可访问性只有自动扫描 | axe 覆盖不了读屏体验与真实键盘流程（搜索弹窗的键盘逻辑有单元/手测，但没有屏幕阅读器测试）；中文输入法组字期间的回车仍待人工确认 |
 | 文件级符号链接的写入防护 | 本机建不出文件级 symlink，对应用例显示 **skipped**（1 条）；在能建的机器上会自动执行。看报告要数 skipped，不能只看绿色 |
 | 局域网是 HTTP、不加密 | 只在可信 Wi-Fi 用，不做端口转发；CSP 也还没启用（Next 内联启动脚本需要 nonce，见 D12） |
-| 备份是明文 zip、不自动清理 | `backups/` 会一直长；别放公开同步盘，需要时手动删旧备份 |
+| 备份是明文 zip、清理要手动 | 页面「清理旧备份」保留最近 10 份，**不自动删**；`backups/` 仍可能被用户忽略而变多；别放公开同步盘（D22） |
+| 清理是真删 | 备份与 `.trash` 清理都要先预览 + 勾选 + 输入「清理」；`.trash` 是整份真删（不是再进一层回收站），但 `pre-restore` 快照与旧备份里仍有内容（D22） |
 | 恢复只从 `backups/` 列表选 | 从 U 盘/另一台机器恢复要先手动把 zip 放进 `backups/`（有意为之：不接受上传，攻击面最小） |
 | 跨进程并发写 | 进程内已串行（D8）；两个 `next dev` / 另跑 CLI 写同一目录仍是残余窗口 |
 | 恢复不是目录级原子 | `backups/restore-journal.json` + **启动时**自动回滚（D17/D18）：强杀后下次启动会自己回到 `pre-restore` 快照，收尾前写入被闸门挡住；但逐文件 rename 仍不是目录级原子，两次 rename 之间被杀会短暂混合 |
@@ -565,7 +567,7 @@ public/            静态资源
 | E2E 复用只用于调试 | `E2E_REUSE=1` 不重建，源码改动后构建可能落后；只重置夹具，不作为验收结果 |
 | E2E 副本复制是排除名单 | 未跟踪的 `*.pem`、`.npmrc` 等可能进临时副本；只在本机临时目录、不上传 |
 | E2E 被强杀会留下锁 | Playwright 在 Windows 会强杀 webServer；下一轮自动回收旧锁。空锁 fail closed；回收守卫残留只挡旧锁回收，需按错误信息手动删 |
-| 单条删除没有可视化回收站 | 笔记进 `content/articles/.trash/`、资源/任务进 `content/.trash/*.jsonl`；整库可用 `pre-restore` 快照回滚，单条要手工贴回（D12 定案） |
+| 单条删除没有可视化回收站 | 笔记进 `content/articles/.trash/`、资源/任务进 `content/.trash/*.jsonl`；整库可用 `pre-restore` 快照回滚，单条要手工贴回；回收站可手动清理 90 天前的条目（D22），但 D12 的「不做可视化回收站」不变 |
 | `npm audit` 有 9 个告警、暂无修复 | 7 low 来自 `katex`/`rehype-katex`（渲染本地 Markdown 的公式），2 moderate 来自 `@tailwindcss/typography` 里的 `postcss-selector-parser`；都标了 no fix available。应用不渲染用户 HTML、也不接受外部上传，风险面限于自己写的笔记；升级依赖时重新评估 |
 | 任务没有完成时间 / 不提醒 | 总览只统计完成几条，没有"本周完成"；逾期只在页面标红，不弹窗不发邮件 |
 | `.trash/` 会进那个私有 git 仓库 | 删除 = 多一个被跟踪文件，历史只增不减；与备份的"恢复"是两套语义 |

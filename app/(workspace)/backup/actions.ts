@@ -7,6 +7,8 @@ import {
   applyRestoreFromForm,
   createBackupNow,
   discardRestoreJournal,
+  pruneBackupsNow,
+  pruneTrashNow,
   verifyBackup,
 } from "@/features/backup/service";
 import { requireAuth } from "@/lib/security/auth";
@@ -86,4 +88,62 @@ export async function discardRestoreJournalAction(formData: FormData): Promise<v
   revalidatePath("/backup");
   revalidatePath("/settings");
   redirect("/backup?journal=discarded");
+}
+
+/**
+ * 清理旧备份（P1）：只删 `ai-lab-*.zip` 里第 11 份及更老的。
+ * 失败逐项报：部分成功时回到预览页，把删了几份、哪几份没删掉写进红字提示。
+ */
+export async function pruneBackupsAction(formData: FormData): Promise<void> {
+  await requireAuth();
+  const result = await pruneBackupsNow({
+    planHash: text(formData, "planHash"),
+    confirm: text(formData, "confirm"),
+  });
+  if (!result.ok) redirect(errorPath("/backup?prune=backups", result.error));
+
+  revalidatePath("/backup");
+  revalidatePath("/settings");
+
+  if (result.failed.length > 0) {
+    const summary = `已删 ${result.removed.length} 份；没删掉 ${result.failed.length} 份：${result.failed
+      .slice(0, 5)
+      .map((item) => `${item.name}（${item.error}）`)
+      .join("；")}`;
+    redirect(
+      errorPath(
+        `/backup?prune=backups&pruned=backups&removed=${result.removed.length}&failed=${result.failed.length}`,
+        summary,
+      ),
+    );
+  }
+
+  redirect(`/backup?pruned=backups&removed=${result.removed.length}&failed=0`);
+}
+
+/** 清理回收站（P1）：90 天前的笔记 / JSONL 行 / restore-* 副本；确认与预览同一条链路 */
+export async function pruneTrashAction(formData: FormData): Promise<void> {
+  await requireAuth();
+  const result = await pruneTrashNow({
+    planHash: text(formData, "planHash"),
+    confirm: text(formData, "confirm"),
+  });
+  if (!result.ok) redirect(errorPath("/backup?prune=trash", result.error));
+
+  revalidatePath("/", "layout");
+
+  if (result.failed.length > 0) {
+    const summary = `已删 ${result.removed.length} 项；没删掉 ${result.failed.length} 项：${result.failed
+      .slice(0, 5)
+      .map((item) => `${item.path}（${item.error}）`)
+      .join("；")}`;
+    redirect(
+      errorPath(
+        `/backup?prune=trash&pruned=trash&removed=${result.removed.length}&failed=${result.failed.length}`,
+        summary,
+      ),
+    );
+  }
+
+  redirect(`/backup?pruned=trash&removed=${result.removed.length}&failed=0`);
 }

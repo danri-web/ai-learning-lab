@@ -3,12 +3,17 @@ import {
   contentFilesRoot,
   createBackup,
   listBackups,
+  previewBackupPrune,
   previewRestore,
+  pruneBackups,
   readBackupBytes,
   resolveBackupFile,
   scanContent,
   verifyBackupByName,
   type BackupListItem,
+  type BackupPruneFailure,
+  type BackupPrunePreview,
+  type BackupPruneResult,
   type CreateBackupResult,
 } from "@/lib/content/backup-store";
 import { isBackupFileName, type RestorePlan } from "@/lib/content/backup-format";
@@ -23,6 +28,13 @@ import {
   type RestoreRecovery,
   type RestoreSuccess,
 } from "@/lib/content/restore-store";
+import {
+  applyTrashCleanup,
+  previewTrashCleanup,
+  type TrashCleanupFailure,
+  type TrashCleanupResult,
+  type TrashPreview,
+} from "@/lib/content/trash-store";
 import { requireAuth } from "@/lib/security/auth";
 
 /**
@@ -311,3 +323,59 @@ export async function downloadBackup(
     return fail(`读取备份失败：${message(error)}`);
   }
 }
+
+/* ────────────────────────── P1：清理（备份保留 + 回收站） ────────────────────────── */
+
+/**
+ * 清理旧备份：预览只读；执行在 backup-store 里走 `serialize` + journal 闸门 + 重算 + planHash。
+ * 这两层都再检查一次 `requireAuth()` / `refreshRecovery()`，和建备份、恢复保持同一套顺序。
+ */
+export async function loadBackupPrunePreview(): Promise<
+  BackupPrunePreview | BackupPruneFailure
+> {
+  await requireAuth();
+  await refreshRecovery();
+  const blocked = recoveryBlocked();
+  if (blocked) return { ok: false, reason: "blocked", error: blocked };
+  return previewBackupPrune({});
+}
+
+export async function pruneBackupsNow(input: {
+  planHash: string;
+  confirm: string;
+}): Promise<BackupPruneResult> {
+  await requireAuth();
+  await refreshRecovery();
+  const blocked = recoveryBlocked();
+  if (blocked) return { ok: false, reason: "blocked", error: blocked };
+  return pruneBackups(input);
+}
+
+export async function loadTrashCleanupPreview(): Promise<TrashPreview | TrashCleanupFailure> {
+  await requireAuth();
+  await refreshRecovery();
+  const blocked = recoveryBlocked();
+  if (blocked) return { ok: false, reason: "blocked", error: blocked };
+  return previewTrashCleanup({});
+}
+
+export async function pruneTrashNow(input: {
+  planHash: string;
+  confirm: string;
+}): Promise<TrashCleanupResult> {
+  await requireAuth();
+  await refreshRecovery();
+  const blocked = recoveryBlocked();
+  if (blocked) return { ok: false, reason: "blocked", error: blocked };
+  return applyTrashCleanup(input);
+}
+
+// 页面/组件只从 service 拿类型，不直接 import 带 fs 的模块（源码闸门守着）
+export type {
+  BackupPruneFailure,
+  BackupPrunePreview,
+  BackupPruneResult,
+  TrashCleanupFailure,
+  TrashCleanupResult,
+  TrashPreview,
+};

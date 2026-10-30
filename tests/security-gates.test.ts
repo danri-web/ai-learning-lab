@@ -65,6 +65,12 @@ const RULES: Rule[] = [
     pattern: /from\s+["']@\/lib\/content\/(?:backup-store|restore-store)["']/,
     allow: ["features/backup/service.ts", "lib/content/restore-store.ts"],
   },
+  {
+    // P1：回收站清理会真删 content/ 里的文件，只允许 backup service 调。
+    name: "只有 backup service 能 import 回收站清理模块",
+    pattern: /from\s+["']@\/lib\/content\/trash-store["']/,
+    allow: ["features/backup/service.ts"],
+  },
 ];
 
 function collect(dir: string): string[] {
@@ -183,6 +189,14 @@ describe("源码闸门（功能未实现也先锁住）", () => {
           text: 'import { applyRestore } from "@/lib/content/restore-store";',
         },
         target: "备份/恢复",
+      },
+      {
+        // P1：页面/组件绕过 service 直接用回收站清理模块
+        fixture: {
+          path: "app/(workspace)/backup/cleanup-cards.tsx",
+          text: 'import { previewTrashCleanup } from "@/lib/content/trash-store";',
+        },
+        target: "回收站清理",
       },
     ];
 
