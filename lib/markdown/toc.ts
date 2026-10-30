@@ -1,22 +1,24 @@
+import { nextHeadingId, slugifyHeading } from "@/lib/markdown/heading-ids";
+
 /**
  * 文章目录（TOC）。
  *
  * 为什么不用插件自动收集：目录必须在**渲染之前**就算好（侧栏要先排版），
  * 而 react-markdown 的组件回调是渲染期才执行的。所以这里直接扫 markdown 原文，
- * 并且和渲染器用**同一个** slugify，保证"标题的 id" 与 "目录的锚点" 永远一致。
+ * 但**锚点 id 的分配逻辑与渲染器共用同一份**（`lib/markdown/heading-ids.ts`）——
+ * 审计 v3 的 F4 就是这两边各写了一套、后缀规则不一致，导致同名标题的目录链接没有落点。
  */
+
+export { slugifyHeading };
 
 export type TocEntry = { id: string; text: string; level: 2 | 3 };
 
-/** 标题 → 锚点 id。允许中文（HTML5 的 id 可以是非 ASCII） */
-export function slugifyHeading(text: string): string {
-  const cleaned = text
-    .replace(/`([^`]*)`/g, "$1")
-    .replace(/[*_~]/g, "")
-    .trim()
-    .toLowerCase();
-  const slug = cleaned.replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
-  return slug || "section";
+/** 标题文字里的行内语法（链接/图片）要还原成纯文字，否则 slug 会带上 URL */
+function plainInline(text: string): string {
+  return text
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .trim();
 }
 
 /**
@@ -39,12 +41,9 @@ export function extractToc(markdown: string): TocEntry[] {
     const match = /^(#{2,3})\s+(.+?)\s*#*$/.exec(trimmed);
     if (!match) continue;
 
-    const text = match[2].trim();
-    const base = slugifyHeading(text);
-    const count = seen.get(base) ?? 0;
-    seen.set(base, count + 1);
+    const text = plainInline(match[2]);
     entries.push({
-      id: count === 0 ? base : `${base}-${count}`,
+      id: nextHeadingId(text, seen),
       text,
       level: match[1].length === 2 ? 2 : 3,
     });

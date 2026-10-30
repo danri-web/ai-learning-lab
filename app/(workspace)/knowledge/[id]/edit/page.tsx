@@ -67,6 +67,7 @@ export default async function EditArticlePage({ params }: Props) {
             category: article.category,
             tags: article.tags,
             body: article.body,
+            revision: result.sourceHash,
           }}
         />
       </div>

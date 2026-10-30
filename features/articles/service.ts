@@ -27,7 +27,14 @@ export type ArticleFields = {
 };
 
 export type ServiceResult<T> =
-  { ok: true; data: T } | { ok: false; error: string; fieldErrors?: Record<string, string> };
+  | { ok: true; data: T }
+  | {
+      ok: false;
+      error: string;
+      fieldErrors?: Record<string, string>;
+      /** 机器可读的原因（目前只有 "stale"：过期保存），界面据此显示「覆盖保存」按钮 */
+      code?: "stale";
+    };
 
 const FIELDS = z.object({
   title: z.string().trim().min(1, "标题不能为空").max(200, "标题最长 200 字"),
@@ -103,6 +110,8 @@ function describeFailure(failure: WriteFailure): string {
       return `写不进去：${failure.error}`;
     case "unsafe":
       return `这个文件名不被接受：${failure.error}`;
+    case "stale":
+      return failure.error;
     case "invalid":
       return failure.error;
     case "io":
@@ -121,17 +130,31 @@ export async function createArticleFromFields(
   return { ok: true, data: { id: result.id } };
 }
 
+/** 保存时可选的冲突控制：`base` = 编辑器打开时的正文指纹，`force` = 用户确认覆盖 */
+export type SaveControls = { base?: string; force?: boolean };
+
 export async function saveArticleFromFields(
   id: string,
   fields: ArticleFields,
+  controls: SaveControls = {},
 ): Promise<ServiceResult<{ id: string; createdAt: string; updatedAt: string }>> {
   if (!isSafeArticleId(id)) return { ok: false, error: "这个文件名不被接受" };
 
   const valid = validate(fields);
   if (!valid.ok) return valid;
 
-  const result = await saveArticle(id, valid.data, { root: articlesRoot() });
-  if (!result.ok) return { ok: false, error: describeFailure(result) };
+  const result = await saveArticle(id, valid.data, {
+    root: articlesRoot(),
+    expectRevision: controls.base || undefined,
+    force: controls.force,
+  });
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: describeFailure(result),
+      ...(result.reason === "stale" ? { code: "stale" as const } : {}),
+    };
+  }
   return {
     ok: true,
     data: { id: result.id, createdAt: result.createdAt, updatedAt: result.updatedAt },

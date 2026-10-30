@@ -26,6 +26,8 @@ export type EditorInitial = {
   category: string;
   tags: string[];
   body: string;
+  /** 打开时的正文指纹：保存时带回去，磁盘上的正文变了就拒绝写（审计 v3 F2） */
+  revision: string;
 };
 
 type Props = {
@@ -83,7 +85,13 @@ export function ArticleEditor({ mode, action, initial }: Props) {
 
   return (
     <form action={formAction} className="grid gap-6">
-      {mode === "edit" && initial ? <input type="hidden" name="id" value={initial.id} /> : null}
+      {mode === "edit" && initial ? (
+        <>
+          <input type="hidden" name="id" value={initial.id} />
+          {/* 打开这份稿子时正文的指纹：保存时比对，变了就拒绝（别静默覆盖别人的改动） */}
+          <input type="hidden" name="base" value={initial.revision} />
+        </>
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs break-words text-muted-foreground">
@@ -108,10 +116,22 @@ export function ArticleEditor({ mode, action, initial }: Props) {
       {state.status === "error" ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-foreground"
+          className="grid gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-foreground"
         >
-          <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
-          <span className="break-words">{state.error}</span>
+          <p className="flex items-start gap-2">
+            <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <span className="break-words">{state.error}</span>
+          </p>
+          {state.code === "stale" ? (
+            <div className="flex flex-wrap items-center gap-2 pl-6">
+              <span className="text-xs break-words text-muted-foreground">
+                你的稿子还在下面（没丢）。可以选择覆盖磁盘上的版本，或者先打开那篇看看改了什么。
+              </span>
+              <Button type="submit" name="force" value="1" variant="destructive" size="xs">
+                仍然覆盖
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

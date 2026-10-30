@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { parseArticle, type ParsedArticle } from "@/lib/content/frontmatter";
+import { revisionOf } from "@/lib/content/revision";
 import { UnsafePathError, resolveArticleFile } from "@/lib/security/paths";
 
 /**
@@ -105,7 +106,12 @@ export async function listArticles(root = articlesRoot()): Promise<ArticleList> 
 }
 
 export type ReadResult =
-  | { ok: true; article: ParsedArticle }
+  | {
+      ok: true;
+      article: ParsedArticle;
+      /** 正文文件的指纹（保存时带回去做"过期保存"检查，见 lib/content/revision.ts） */
+      sourceHash: string;
+    }
   | { ok: false; reason: "not-found" | "invalid" | "unreadable"; error: string };
 
 export async function readArticle(id: string, root = articlesRoot()): Promise<ReadResult> {
@@ -132,5 +138,5 @@ export async function readArticle(id: string, root = articlesRoot()): Promise<Re
   const parsed = parseArticle(source, id);
   if (!parsed.ok) return { ok: false, reason: "invalid", error: parsed.error };
 
-  return { ok: true, article: parsed.article };
+  return { ok: true, article: parsed.article, sourceHash: revisionOf(source) };
 }

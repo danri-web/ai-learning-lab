@@ -1,11 +1,10 @@
-import type { ReactNode } from "react";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import ReactMarkdown from "react-markdown";
 
-import { slugifyHeading } from "@/lib/markdown/toc";
+import { rehypeHeadingIds } from "@/lib/markdown/heading-ids";
 
 /**
  * Markdown 渲染器。
@@ -25,17 +24,10 @@ import { slugifyHeading } from "@/lib/markdown/toc";
  * 不是 VS Code 的 TextMate 主题。已记入 docs/架构决策.md 的"偏离记录"。
  */
 
-/** 标题的 id 与侧栏目录用同一个 slugify，保证锚点对得上 */
-function toPlainText(node: ReactNode): string {
-  if (node === null || node === undefined || typeof node === "boolean") return "";
-  if (typeof node === "string" || typeof node === "number") return String(node);
-  if (Array.isArray(node)) return node.map(toPlainText).join("");
-  if (typeof node === "object" && "props" in node) {
-    return toPlainText((node as { props: { children?: ReactNode } }).props.children);
-  }
-  return "";
-}
-
+/**
+ * 标题的 id 由 rehype 插件分配（`lib/markdown/heading-ids.ts`），与侧栏目录共用同一套
+ * 去重规则 —— 同名标题在正文里是 `example` / `example-1`，目录里也是（审计 v3 F4）。
+ */
 export function ArticleMarkdown({ body }: { body: string }) {
   return (
     <div className="prose prose-lab max-w-none">
@@ -43,17 +35,20 @@ export function ArticleMarkdown({ body }: { body: string }) {
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
           rehypeKatex,
+          rehypeHeadingIds,
           // ignoreMissing：不认识的语言按普通文本渲染，不让整页 500
           [rehypeHighlight, { detect: false, ignoreMissing: true }],
         ]}
         components={{
-          h2: ({ children }) => (
-            <h2 id={slugifyHeading(toPlainText(children))} className="scroll-mt-20">
+          // `id` 是 rehype 插件写到 hast properties 上的；组件覆盖必须显式接住它
+          // （不能整个 `{...props}` 摊开：react-markdown 会把 `node` 一起塞进 props，最后变成 DOM 属性）
+          h2: ({ id, children }) => (
+            <h2 id={id} className="scroll-mt-20">
               {children}
             </h2>
           ),
-          h3: ({ children }) => (
-            <h3 id={slugifyHeading(toPlainText(children))} className="scroll-mt-20">
+          h3: ({ id, children }) => (
+            <h3 id={id} className="scroll-mt-20">
               {children}
             </h3>
           ),

@@ -89,6 +89,30 @@ describe("新建", () => {
     expect(second).toEqual({ ok: true, id: "model-2" });
   });
 
+  it("同一标题 8 路并发创建：必须 8 个不同 id，8 份内容都在（审计 v3 F1）", async () => {
+    const bodies = Array.from({ length: 8 }, (_, index) => `正文 ${index}`);
+    const results = await Promise.all(
+      bodies.map((body) => createArticle(input({ body }), { root: root(), now: NOW })),
+    );
+
+    const ids = results.map((result) => (result.ok ? result.id : `FAIL:${result.reason}`));
+    // 每个请求都成功、且 id 互不相同 —— 否则就是「两个请求都报成功，但只有一份内容活下来」
+    expect(ids.filter((id) => id.startsWith("FAIL:"))).toEqual([]);
+    expect(new Set(ids).size).toBe(8);
+
+    const files = (await fs.readdir(root())).filter((name) => name.endsWith(".md"));
+    expect(files).toHaveLength(8);
+
+    // 8 份内容都能读回来（不是被后写的顶掉）
+    const bodiesOnDisk: string[] = [];
+    for (const id of ids) {
+      const read = await readArticle(id, root());
+      expect(read.ok, id).toBe(true);
+      if (read.ok) bodiesOnDisk.push(read.article.body);
+    }
+    expect(bodiesOnDisk.sort()).toEqual([...bodies].sort());
+  });
+
   it("标题里带 YAML 特殊字符也能读回来（引号由 stringify 决定，不是手拼）", async () => {
     const title = '他说："注意力" #1: 是的';
     const created = await createArticle(input({ title }), { root: root(), now: NOW });
@@ -211,6 +235,97 @@ describe("保存", () => {
     // 不留临时文件（原子写入的正常结束状态）
     const leftovers = (await fs.readdir(root())).filter((name) => name.endsWith(".tmp"));
     expect(leftovers).toEqual([]);
+  });
+});
+
+describe("正文保真（审计 v3 F3）", () => {
+  it("开头的缩进代码块不会被 trim 吃掉（4 个空格就是 Markdown 的语义）", async () => {
+    const body = "    const x = 1;\n    console.log(x);";
+    const created = await createArticle(input({ body }), { root: root(), now: NOW });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const read = await readArticle(created.id, root());
+    expect(read.ok).toBe(true);
+    if (read.ok) expect(read.article.body).toBe(body);
+  });
+
+  it("保存回来的正文与提交的一字不差（只允许末尾换行归一）", async () => {
+    const body = "行尾两个空格是硬换行  \n第二行\n\n```python\nprint(1)\n```\n\n";
+    const created = await createArticle(input({ body }), { root: root(), now: NOW });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const read = await readArticle(created.id, root());
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.article.body).toBe(body.replace(/\n+$/, ""));
+  });
+});
+
+describe("过期保存（审计 v3 F2）", () => {
+  it("拿旧版本去保存 → 拒绝，磁盘上别人的改动不动", async () => {
+    const created = await createArticle(input({ body: "版本 A" }), { root: root(), now: NOW });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const first = await readArticle(created.id, root());
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const base = first.sourceHash;
+
+    // 别处（另一个标签页 / VS Code）先保存了 B
+    const other = await saveArticle(created.id, input({ body: "版本 B" }), {
+      root: root(),
+      now: LATER,
+    });
+    expect(other.ok).toBe(true);
+
+    // 旧稿带着打开时的指纹提交
+    const stale = await saveArticle(created.id, input({ body: "版本 A 的草稿" }), {
+      root: root(),
+      now: LATER,
+      expectRevision: base,
+    });
+    expect(stale).toMatchObject({ ok: false, reason: "stale" });
+
+    const onDisk = await fs.readFile(path.join(root(), `${created.id}.md`), "utf8");
+    expect(onDisk).toContain("版本 B");
+    expect(onDisk).not.toContain("版本 A 的草稿");
+  });
+
+  it("用户明确选择覆盖（force）时能写进去 —— 决定权在用户手里", async () => {
+    const created = await createArticle(input({ body: "版本 A" }), { root: root(), now: NOW });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const first = await readArticle(created.id, root());
+    if (!first.ok) throw new Error("读不回来");
+    await saveArticle(created.id, input({ body: "版本 B" }), { root: root(), now: LATER });
+
+    const forced = await saveArticle(created.id, input({ body: "我的草稿" }), {
+      root: root(),
+      now: LATER,
+      expectRevision: first.sourceHash,
+      force: true,
+    });
+    expect(forced.ok).toBe(true);
+    if (forced.ok) expect(forced.revision).toMatch(/^[0-9a-f]{32}$/);
+
+    const onDisk = await fs.readFile(path.join(root(), `${created.id}.md`), "utf8");
+    expect(onDisk).toContain("我的草稿");
+  });
+
+  it("不带指纹（CLI 之类直接调用）不做检查 —— 这是刻意的，检查只在界面链路开启", async () => {
+    const created = await createArticle(input({ body: "版本 A" }), { root: root(), now: NOW });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const saved = await saveArticle(created.id, input({ body: "版本 B" }), {
+      root: root(),
+      now: LATER,
+    });
+    expect(saved.ok).toBe(true);
   });
 });
 

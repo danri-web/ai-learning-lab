@@ -4,7 +4,9 @@ import { promises as fs } from "node:fs";
 import matter from "gray-matter";
 
 import { formatLocalDate, formatLocalStamp } from "@/lib/content/clock";
+import { normalizeArticleBody } from "@/lib/content/body-text";
 import { parseArticle } from "@/lib/content/frontmatter";
+import { revisionOf } from "@/lib/content/revision";
 import { fallbackNoteId, slugifyTitle } from "@/lib/content/id";
 import { writeFileAtomic } from "@/lib/fs/atomic-write";
 import { UnsafePathError, resolveArticleFile, resolveTrashFile } from "@/lib/security/paths";
@@ -13,11 +15,13 @@ import { MAX_ID_LENGTH } from "@/lib/security/article-id";
 /**
  * 写笔记。**唯一允许写正文文件的地方**（docs/架构决策.md D4）。
  *
- * 三条不变式，每条都有测试：
+ * 四条不变式，每条都有测试：
  *   1. 只走 `resolveArticleFile`（物理校验路径）和 `writeFileAtomic`（临时文件 + rename）
- *   2. **写之前先证明写出来的东西读得回来** —— 生成的 source 先过一遍 `parseArticle`，
- *      过不了就根本不落盘。宁可保存失败，也不要留下一个应用自己都打不开的文件
+ *   2. **写之前先证明写出来的东西读得回来** —— 生成 source 后过一遍 `parseArticle`，
+ *      而且要求**正文一字不差**；过不了就根本不落盘（审计 v3 F3 补的等式检查）
  *   3. 删除 = 移到 `.trash/`，不是真删（用户数据，误删要能捞回来）
+ *   4. **写操作进程内串行**（`serialize`）：分配 id 与落盘之间如果插进另一个请求，
+ *      两边都会以为自己是第一个 —— 审计 v3 F1 实测 8 个并发创建只活下来 1 个 id
  *
  * 这里不做「用户输入是否友好」的判断（字段长度、标签数量在 service 层做），
  * 只做「这个文件/这次写入是否安全、是否自洽」。
@@ -30,14 +34,14 @@ export type ArticleInput = {
   body: string;
 };
 
-export type WriteFailureReason = "invalid" | "not-found" | "unsafe" | "conflict" | "io";
+export type WriteFailureReason = "invalid" | "not-found" | "unsafe" | "conflict" | "stale" | "io";
 
 export type WriteFailure = { ok: false; reason: WriteFailureReason; error: string };
 
 export type CreateResult = { ok: true; id: string } | WriteFailure;
 
 export type SaveResult =
-  { ok: true; id: string; createdAt: string; updatedAt: string } | WriteFailure;
+  { ok: true; id: string; createdAt: string; updatedAt: string; revision: string } | WriteFailure;
 
 export type TrashResult = { ok: true; id: string; trashedTo: string } | WriteFailure;
 
@@ -47,6 +51,35 @@ export type WriteOptions = {
   /** 注入"现在"，测试里固定日期；不传就是本机当前时间 */
   now?: Date;
 };
+
+export type SaveOptions = WriteOptions & {
+  /**
+   * 编辑器打开时那份正文的指纹（`revisionOf`）。给了就做「过期保存」检查：
+   * 磁盘上的正文已经变了 → 拒绝，让用户自己决定是覆盖还是刷新（审计 v3 F2）。
+   */
+  expectRevision?: string;
+  /** 用户明确选择「覆盖」时置真：跳过过期检查 */
+  force?: boolean;
+};
+
+/**
+ * 进程内写锁：所有会改磁盘的操作排队执行。
+ *
+ * 为什么够用：这是单用户、单进程的本地应用，所有写入都来自同一个 Next 进程的 Server Action。
+ * 为什么必须有：分配 id 用 `readdir` 拿快照，落盘用 rename —— 两次操作之间如果插进另一个
+ * 创建请求，两边会算出一模一样的 id，后落盘的把前一份**静默覆盖**（实测 8 并发只活 1 份）。
+ *
+ * 已知不覆盖：两个独立进程（比如你同时开两个 `next dev`、或另跑一个 CLI）之间不共享这把锁 ——
+ * 这属于 `docs/架构决策.md` 残余风险里的 TOCTOU 一类，已明确接受。
+ */
+let writeQueue: Promise<unknown> = Promise.resolve();
+
+function serialize<T>(task: () => Promise<T>): Promise<T> {
+  const run = writeQueue.then(task, task);
+  // 队列只关心顺序，不关心成败：前一个失败也必须让后一个跑起来
+  writeQueue = run.catch(() => {});
+  return run;
+}
 
 function fail(reason: WriteFailureReason, error: string): WriteFailure {
   return { ok: false, reason, error };
@@ -68,17 +101,28 @@ function fromException(error: unknown): WriteFailure {
  *
  * 用 gray-matter 的 stringify（内部是 js-yaml）：中文、冒号、`#` 这些会由它决定要不要加引号，
  * 手拼字符串迟早撞上一个需要引号的标题。是否**读得回来**由 `roundTrip` 再验一遍。
+ *
+ * 正文只归一两端空行（`normalizeArticleBody`），不 trim —— 缩进代码块是语义（审计 v3 F3）。
  */
 function renderSource(frontmatter: Record<string, unknown>, body: string): string {
-  const trimmed = body.trim();
-  const text = matter.stringify(trimmed ? `${trimmed}\n` : "", frontmatter);
+  const normalized = normalizeArticleBody(body);
+  const text = matter.stringify(normalized ? `${normalized}\n` : "", frontmatter);
   return text.endsWith("\n") ? text : `${text}\n`;
 }
 
-/** 写之前的自检：生成的内容必须能被自己的解析器读回来 */
-function roundTrip(source: string, id: string): WriteFailure | null {
+/**
+ * 写之前的自检：生成的内容必须能被自己的解析器读回来，**而且正文一字不差**。
+ *
+ * 审计 v3 的 F3 指出：原来只验"能解析"，trim 掉的缩进照样算通过。
+ * 现在验的是等式 —— 写进去什么，读回来就得是什么（两端空行按契约定，其余逐字比）。
+ */
+function roundTrip(source: string, id: string, expectedBody: string): WriteFailure | null {
   const parsed = parseArticle(source, id);
-  return parsed.ok ? null : fail("invalid", `生成的内容不合法：${parsed.error}`);
+  if (!parsed.ok) return fail("invalid", `生成的内容不合法：${parsed.error}`);
+  if (parsed.article.body !== normalizeArticleBody(expectedBody)) {
+    return fail("invalid", "生成的内容读回来与提交的正文不一致（换行/缩进会被改变），拒绝保存");
+  }
+  return null;
 }
 
 /** 目录里已经被占用的 id（小写集合：Windows 文件系统大小写不敏感，"Model" 和 "model" 是同一个文件） */
@@ -109,7 +153,12 @@ function nextFreeId(base: string, taken: Set<string>): string | null {
   return null;
 }
 
-export async function createArticle(
+export function createArticle(input: ArticleInput, options: WriteOptions): Promise<CreateResult> {
+  // 分配 id 与落盘必须在同一把锁里，否则两个同标题请求会算出同一个 id（审计 v3 F1）
+  return serialize(() => createArticleUnlocked(input, options));
+}
+
+async function createArticleUnlocked(
   input: ArticleInput,
   options: WriteOptions,
 ): Promise<CreateResult> {
@@ -140,7 +189,7 @@ export async function createArticle(
       },
       input.body,
     );
-    const invalid = roundTrip(source, id);
+    const invalid = roundTrip(source, id, input.body);
     if (invalid) return invalid;
 
     const full = await resolveArticleFile(root, id);
@@ -167,10 +216,18 @@ function readRawFrontmatter(source: string): Record<string, unknown> {
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
-export async function saveArticle(
+export function saveArticle(
   id: string,
   input: ArticleInput,
-  options: WriteOptions,
+  options: SaveOptions,
+): Promise<SaveResult> {
+  return serialize(() => saveArticleUnlocked(id, input, options));
+}
+
+async function saveArticleUnlocked(
+  id: string,
+  input: ArticleInput,
+  options: SaveOptions,
 ): Promise<SaveResult> {
   const { root } = options;
   const now = options.now ?? new Date();
@@ -195,6 +252,18 @@ export async function saveArticle(
     return fail("io", `读取失败：${errorMessage(error)}`);
   }
 
+  // 过期保存检查（审计 v3 F2）：编辑器带回来的指纹对不上 → 磁盘上的正文已经被别人改过，
+  // 此时直接写会把那次改动**静默**顶掉。拒绝并把选择权交回给用户（覆盖 / 刷新重来）。
+  if (options.expectRevision && !options.force) {
+    const current = revisionOf(existing);
+    if (current !== options.expectRevision) {
+      return fail(
+        "stale",
+        "这篇笔记在你打开之后被改过（另一个标签页、或别的编辑器）。为避免覆盖别人的修改，这次没有保存。",
+      );
+    }
+  }
+
   const raw = readRawFrontmatter(existing);
   // createdAt 是这篇笔记的"出生证明"，保存时不能改；原值坏了才退回今天（否则整篇永远存不进去）
   const createdAt =
@@ -213,7 +282,7 @@ export async function saveArticle(
     },
     input.body,
   );
-  const invalid = roundTrip(source, id);
+  const invalid = roundTrip(source, id, input.body);
   if (invalid) return invalid;
 
   try {
@@ -221,11 +290,15 @@ export async function saveArticle(
   } catch (error) {
     return fromException(error);
   }
-  return { ok: true, id, createdAt, updatedAt: today };
+  return { ok: true, id, createdAt, updatedAt: today, revision: revisionOf(source) };
 }
 
 /** 删除 = 移到 `.trash/`。文件名带时间戳，同一个 id 删两次也不会互相覆盖 */
-export async function trashArticle(id: string, options: WriteOptions): Promise<TrashResult> {
+export function trashArticle(id: string, options: WriteOptions): Promise<TrashResult> {
+  return serialize(() => trashArticleUnlocked(id, options));
+}
+
+async function trashArticleUnlocked(id: string, options: WriteOptions): Promise<TrashResult> {
   const { root } = options;
   const now = options.now ?? new Date();
 

@@ -36,8 +36,17 @@ function readFields(formData: FormData) {
   };
 }
 
-function toErrorState(error: string, fieldErrors?: Record<string, string>): FormState {
-  return { status: "error", error, ...(fieldErrors ? { fieldErrors } : {}) };
+function toErrorState(
+  error: string,
+  fieldErrors?: Record<string, string>,
+  code?: "stale",
+): FormState {
+  return {
+    status: "error",
+    error,
+    ...(fieldErrors ? { fieldErrors } : {}),
+    ...(code ? { code } : {}),
+  };
 }
 
 /** 新建 → 成功后直接进详情页（保存失败则留在编辑器，字段不丢） */
@@ -52,11 +61,20 @@ export async function createArticleAction(
   redirect(`/knowledge/${encodeURIComponent(result.data.id)}`);
 }
 
-/** 保存 → 成功后回详情页看渲染结果 */
+/**
+ * 保存 → 成功后回详情页看渲染结果。
+ *
+ * 表单里带两个隐藏控制项（审计 v3 F2）：
+ *   - `base`：编辑器打开时的正文指纹，对不上就不写（避免静默覆盖别人的改动）
+ *   - `force`：用户看到冲突后点「覆盖保存」才带 1
+ */
 export async function saveArticleAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const id = text(formData, "id");
-  const result = await saveArticleFromFields(id, readFields(formData));
-  if (!result.ok) return toErrorState(result.error, result.fieldErrors);
+  const result = await saveArticleFromFields(id, readFields(formData), {
+    base: text(formData, "base") || undefined,
+    force: text(formData, "force") === "1",
+  });
+  if (!result.ok) return toErrorState(result.error, result.fieldErrors, result.code);
 
   revalidatePath("/knowledge");
   revalidatePath(`/knowledge/${id}`);

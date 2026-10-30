@@ -1,6 +1,7 @@
 import matter from "gray-matter";
 import { z } from "zod";
 
+import { normalizeArticleBody } from "@/lib/content/body-text";
 import { ARTICLE_ID_MESSAGE, ARTICLE_ID_REGEX_SOURCE } from "@/lib/security/article-id";
 
 /**
@@ -79,5 +80,6 @@ export function parseArticle(source: string, fileId: string): ParseSuccess | Par
     };
   }
 
-  return { ok: true, article: { ...result.data, body: body.trim() } };
+  // 正文只归一两端空行：行首缩进（缩进代码块）与行尾空格（硬换行）是 Markdown 的语义，不能 trim
+  return { ok: true, article: { ...result.data, body: normalizeArticleBody(body) } };
 }

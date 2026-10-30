@@ -10,6 +10,8 @@ export type FormState = {
   status: "idle" | "error";
   error?: string;
   fieldErrors?: Record<string, string>;
+  /** "stale" = 这篇笔记在你打开后被改过（编辑器据此多显示一个「覆盖保存」） */
+  code?: "stale";
 };
 
 export const INITIAL_FORM_STATE: FormState = { status: "idle" };

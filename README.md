@@ -101,10 +101,10 @@ components/layout/ 外壳：侧栏、顶栏、手机抽屉、页面标题
 components/ui/     shadcn 组件 + 空状态
 components/knowledge/  Markdown 渲染器 + 编辑器 + 删除确认
 lib/content/       读主体（articles.ts）、frontmatter 校验、写入（write.ts）、id 生成
-lib/markdown/      目录提取、正文整形
+lib/markdown/     目录提取、标题锚点分配、正文整形
 lib/security/      文章 id 规则、路径闸门（唯一的 id → 路径入口）
 lib/fs/            原子写入（临时文件 + fsync + rename）
-tests/             Vitest 单元测试（116 条，其中 1 条在本机会 skipped）
+tests/             Vitest 单元测试（130 条，其中 1 条在本机会 skipped）
 docs/              需求书、架构决策、截图
 public/            静态资源
 ```
@@ -183,3 +183,16 @@ public/            静态资源
 - **中文文件名**（ADR D7）：`Transformer 的注意力机制（上）` → `Transformer-的注意力机制-上.md`；重名 `-2`；全符号标题退回 `note-YYYYMMDD-xxxx`
 - **实测踩到的坑**：Next 16 把动态段原样（未 URL 解码）交给页面，中文 id 会全被判非法 → 统一走 `articleIdFromParam()`
 - 断言：116 条（新增 id/文件名生成 18 条、写入 16 条；1 条文件级符号链接的断言在本机 skipped）
+
+### 外部审计 v3：4 条发现全部为真，已修（2026-10-30）
+
+审计是外部模型做**静态审查**（不跑代码），4 条都附了 `文件:行号`。我逐条写了复现，**先看着它失败，再修**：
+
+| # | 发现 | 复现结果 | 修法 | 回归断言 |
+| --- | --- | --- | --- | --- |
+| F1 | 并发新建会互相覆盖 | 同一标题 **8 路并发创建 → 只活下来 1 个 id**（8 个请求都报成功） | 写操作进程内串行（[write.ts](lib/content/write.ts) 的 `serialize`） | 8 路并发必须得到 8 个不同 id、8 份内容都在 |
+| F2 | 过期保存静默覆盖新内容 | 两个编辑器先后保存 → 旧稿覆盖新稿，两次都返回成功 | 编辑器带正文指纹（sha256）提交，写入前比对；不一致就拒绝并给「仍然覆盖」（ADR **D8**） | 旧指纹保存被拒且磁盘不变；`force` 可覆盖 |
+| F3 | 正文 `trim()` 破坏 Markdown 语义 | 以 4 空格开头的缩进代码块被压平（读一次就丢） | 只归一两端空行（[body-text.ts](lib/content/body-text.ts)），并加**正文等式检查** | 缩进 / 行尾空格 / 代码块原样往返 |
+| F4 | 同名标题的目录锚点没有落点 | 目录给 `example-1`，渲染器两个都是 `example`（重复 id） | 目录与渲染共用一套分配逻辑（[heading-ids.ts](lib/markdown/heading-ids.ts)） | 每个目录锚点都恰好对应一个标题 id |
+
+> 断言从 116 条增至 **130 条**；F1/F2/F3 的复现都先跑出失败输出，再改代码。
