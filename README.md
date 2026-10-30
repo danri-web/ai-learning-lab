@@ -321,6 +321,7 @@ public/            静态资源
 - **三道门**：`proxy.ts` 每个请求先过（页面、RSC、action POST 都算）→ `(workspace)/layout.tsx` 的 `requirePageAuth()` → 每个 Server Action / 受保护 Route Handler 里的 `requireAuth()`。这样「页面拦了、action 没拦」不会发生
 - **fail closed**：局域网模式配置不齐 → 503 说明页；本机模式发现非本机 Host（有人绕过脚本手动绑 `0.0.0.0`）→ 503，不假装安全
 - **Windows / Android**：README 上面给了 `auth:set-password` → `build` → `start:lan` 的步骤和**只放行专用网络**的防火墙命令；手机连同一 Wi-Fi，用终端打印的局域网 IP 访问
+- **真机 Android（2026-10-30）**：iQOO Z11 Turbo / originOS 6，P40 开热点；登录、五页、笔记新增/编辑/删除、搜索、资源/任务、备份建/校验/预览、登出/后退、390px 布局全部通过。第一次连不上是 Windows 防火墙里 `D:\tools\nodejs\node.exe` 的 **Block** 规则（阻止优先于允许），删掉后即通；不是应用问题
 
 **断言与实测**
 
