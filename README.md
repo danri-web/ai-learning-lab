@@ -146,6 +146,8 @@ npm run format:check # Prettier 只检查
 
 交付门槛是两条命令：`npm run verify`（**519 条断言：518 通过 + 1 跳过**，跳过的是本机建不出的文件级符号链接）和 `npm run test:e2e`（Playwright）。端到端**不在 `verify` 里**：它要起服务、会改测试数据、单轮约 2.5 分钟，塞进每次提交会让人开始跳过闸门。
 
+另有一条**外部复核用的只读探针**（不属于交付门槛，也不计入 519）：`npm run audit:probes`。30 个样例覆盖 frontmatter 六种 Unicode 空白 × 前置/后置、读/保存/恢复预览三个入口、写入闸门与恢复状态机；输出一页 `PASS/FAIL`，只读、不联网、跑完自动清临时目录。详见 [`scripts/audit/README.md`](scripts/audit/README.md)。
+
 ### 端到端测试怎么隔离数据
 
 E2E 会新建/编辑/删除笔记、建备份、真的执行恢复 —— 这些只能发生在一次性副本里：
@@ -469,7 +471,7 @@ public/            静态资源
 > ① `---javascript\u00a0` 这类 Unicode 空白绕过 frontmatter 守卫，payload 在真实的
 > `parseArticle` / `readFrontmatter` / `checkBackupPayload` 里执行（High）；
 > ② 延迟恢复会覆盖重启后先做的编辑（Medium）。两条都已按复现修完，见下方「v2 审计修复」与 ADR **D18**。
-> 新验收包 `output/ai-lab-acceptance-2026-10-30-v3`；旧包 `ddf54bc`（含 SEC-01）与 v2 包（含空白绕过）
+> 新验收包 `output/ai-lab-acceptance-2026-10-30-v3b`（含 `npm run audit:probes` 的 30/30 日志）；旧包 `ddf54bc`（含 SEC-01）与 v2 包（含空白绕过）
 > 都不要继续分发。
 
 ### v2 审计修复：Unicode 空白 frontmatter + 启动即收尾（2026-10-30）
