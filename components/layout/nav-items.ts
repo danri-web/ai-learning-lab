@@ -1,4 +1,5 @@
 import {
+  Archive,
   BookOpen,
   LayoutDashboard,
   Library,
@@ -26,6 +27,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/knowledge", label: "知识库", en: "Knowledge", icon: BookOpen },
   { href: "/resources", label: "资源收藏", en: "Resources", icon: Library },
   { href: "/learning", label: "学习任务", en: "Learning", icon: ListChecks },
+  { href: "/backup", label: "备份", en: "Backup", icon: Archive },
   { href: "/settings", label: "设置", en: "Settings", icon: Settings },
 ];
 

@@ -22,3 +22,10 @@ export function formatLocalStamp(now = new Date()): string {
     now.getMinutes(),
   )}${pad(now.getSeconds())}`;
 }
+
+/** `YYYY-MM-DD HH:mm:ss`（备份 manifest 里给人看的本地时间；机器看 createdAt 的 ISO） */
+export function formatLocalDateTime(now = new Date()): string {
+  return `${formatLocalDate(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(
+    now.getSeconds(),
+  )}`;
+}

@@ -11,6 +11,7 @@ import {
   updateTaskFromFields,
   type TaskFields,
 } from "@/features/tasks/service";
+import { requireAuth } from "@/lib/security/auth";
 
 /**
  * 学习任务的 Server Action 层：只做 FormData → 普通对象 + 刷新/跳转。
@@ -55,6 +56,7 @@ export async function createTaskAction(
   _prev: TaskFormState,
   formData: FormData,
 ): Promise<TaskFormState> {
+  await requireAuth();
   const result = await createTaskFromFields(readFields(formData));
   if (!result.ok) return toErrorState(result.error, result.fieldErrors);
 
@@ -67,6 +69,7 @@ export async function updateTaskAction(
   _prev: TaskFormState,
   formData: FormData,
 ): Promise<TaskFormState> {
+  await requireAuth();
   const id = text(formData, "id");
   const result = await updateTaskFromFields(id, readFields(formData), {
     base: text(formData, "base") || undefined,
@@ -83,6 +86,7 @@ export async function deleteTaskAction(
   _prev: TaskFormState,
   formData: FormData,
 ): Promise<TaskFormState> {
+  await requireAuth();
   const result = await deleteTaskById(text(formData, "id"));
   if (!result.ok) return toErrorState(result.error);
 
@@ -99,6 +103,7 @@ export async function setTaskStatusAction(
   id: string,
   status: string,
 ): Promise<{ ok: boolean; error?: string }> {
+  await requireAuth();
   const result = await setTaskStatus(id, status);
   if (!result.ok) return { ok: false, error: result.error };
 

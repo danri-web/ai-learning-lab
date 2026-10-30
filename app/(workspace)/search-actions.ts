@@ -1,6 +1,7 @@
 "use server";
 
 import { runSearch } from "@/features/search/service";
+import { requireAuth } from "@/lib/security/auth";
 import type { SearchResponse } from "@/lib/search/sources";
 
 /**
@@ -14,5 +15,6 @@ import type { SearchResponse } from "@/lib/search/sources";
  * 客户端只看到摘要片段，看不到全文 —— 摘要的长度上限在 lib/search/query.ts 里钉着。
  */
 export async function searchAction(query: string): Promise<SearchResponse> {
+  await requireAuth();
   return runSearch(query);
 }

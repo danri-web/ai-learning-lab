@@ -2,7 +2,7 @@
 
 一个本地优先的 AI 学习、知识管理与资源收藏工作台。
 
-**当前状态：阶段 6 完成（知识库 + 资源收藏 + 全文搜索 + 学习任务与总览）。** 笔记能新建/编辑/删除（中文标题直接当文件名）；资源收藏能增删改、按类型/分类/标签筛选、三种排序，并能挂到某篇笔记上。链接只接受 http/https，应用**从不抓取**你填的地址。`Ctrl+K` 能搜全部笔记与资源：分组、摘要、高亮、`↑↓`/`Enter`/`Esc` 键盘操作，**不建索引**（每次搜都读文件，所以永远不会有"索引过期"）。学习任务有 Todo / 进行中 / 已完成三档、截止日期（会算逾期）、可关联多篇笔记与多条资源；总览页的数字全部从文件现算。
+**当前状态：阶段 7 完成（知识库 + 资源收藏 + 全文搜索 + 学习任务与总览 + 备份恢复与局域网认证）。** 笔记能新建/编辑/删除（中文标题直接当文件名）；资源收藏能增删改、按类型/分类/标签筛选、三种排序，并能挂到某篇笔记上。链接只接受 http/https，应用**从不抓取**你填的地址。`Ctrl+K` 能搜全部笔记与资源：分组、摘要、高亮、`↑↓`/`Enter`/`Esc` 键盘操作，**不建索引**（每次搜都读文件，所以永远不会有"索引过期"）。学习任务有 Todo / 进行中 / 已完成三档、截止日期（会算逾期）、可关联多篇笔记与多条资源；总览页的数字全部从文件现算。阶段 7 把 `content/` 打成带清单的 zip（每个文件 sha256），恢复前先预览、先留快照、失败自动回滚；局域网默认关闭，打开后用口令登录，所有页面与写入都要过同一道门。
 
 ![总览](docs/screenshot-dashboard.png)
 
@@ -15,6 +15,16 @@
 ![资源收藏](docs/screenshot-resources.png)
 
 ![搜索](docs/screenshot-search.png)
+
+![备份](docs/screenshot-backup.png)
+
+![恢复预览](docs/screenshot-restore.png)
+
+![恢复确认](docs/screenshot-restore-confirm.png)
+
+![设置](docs/screenshot-settings.png)
+
+![手机登录](docs/screenshot-mobile-login.png)
 
 > 完整需求、验收标准与八阶段路线在 **[docs/需求书.md](docs/需求书.md)**（原始需求书，内容保持原样）。
 
@@ -68,6 +78,27 @@ npm run dev
 
 打开 <http://127.0.0.1:3000>。
 
+### 手机 / 局域网（可选，默认关闭）
+
+默认只监听 `127.0.0.1`，手机连不上（这是故意的）。要用手机访问：
+
+```powershell
+# 1) 设一次口令：只把 scrypt 哈希写进 .env.local（不进 Git、不进备份）
+npm run auth:set-password
+
+# 2) 局域网模式用生产构建，不用 dev
+npm run build
+npm run start:lan
+```
+
+`start:lan` 会绑定 `0.0.0.0`、强制 `ALLOW_LAN=1`，并在启动前检查口令哈希与会话密钥；缺一个就拒绝启动。手机和电脑连同一个 Wi-Fi，打开终端打印的 `http://<电脑局域网 IP>:3000`，输入口令登录。第一次连不上时检查 Windows 防火墙的**专用网络**是否放行该端口（**不要**为了省事关掉整个防火墙）：
+
+```powershell
+New-NetFirewallRule -DisplayName "AI Learning Lab" -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow -Profile Private
+```
+
+局域网是 **HTTP，不加密**：只在可信 Wi-Fi 下用，不要做端口转发。会话 12 小时；换掉 `SESSION_SECRET` 会让所有设备立刻退出。
+
 环境：Windows 10 + Node.js 24.21 + npm 11.19（实测版本）。环境变量示例见 `.env.example`，复制为 `.env.local` 后修改。
 
 ## 已实现的脚本
@@ -75,7 +106,9 @@ npm run dev
 ```powershell
 npm run dev          # 开发服务器（127.0.0.1:3000）
 npm run build        # 生产构建
-npm run start        # 运行生产构建
+npm run start        # 运行生产构建（127.0.0.1:3000）
+npm run start:lan    # 局域网模式（生产构建 + 强制口令；先 build）
+npm run auth:set-password # 设置/重置局域网口令（写 scrypt 哈希到 .env.local）
 npm run lint         # ESLint 9
 npm run typecheck    # next typegen && tsc --noEmit
 npm run test         # Vitest
@@ -96,6 +129,8 @@ npm run format:check # Prettier 只检查
 | 测试 | Vitest 5 |
 | 格式化 | Prettier 3 |
 | 搜索 | 直接扫 `content/` + 纯函数子串匹配（**无索引**，见 [docs/架构决策.md](docs/架构决策.md) D6 / D10） |
+| 备份 | `yazl` / `yauzl` 读写 zip；manifest + 每文件 sha256 自检（D12） |
+| 认证 | scrypt 口令哈希 + HMAC 会话 cookie（Web Crypto），`proxy.ts` + 布局 + 每个 action 三道门（D12） |
 | 计划中 | SQLite（只在搜索/列表真慢到 >300ms 时才考虑，且只当可重建的缓存） |
 
 ## 目录
@@ -112,17 +147,22 @@ components/knowledge/  Markdown 渲染器 + 编辑器 + 删除确认
 components/resources/  收藏表单 + 删除确认
 components/tasks/      任务表单（多选关联）+ 状态切换 + 删除确认
 lib/content/       笔记读写（articles/write）、资源读写（resources/resources-store）、
-                   任务读写（tasks/tasks-store）、id 与校验、BOM 处理
+                   任务读写（tasks/tasks-store）、备份与恢复（backup-store/restore-store/
+                   backup-format/backup-validate）、id 与校验、BOM 处理
 lib/markdown/      目录提取、标题锚点分配、正文整形
 lib/search/        搜索：纯函数（匹配/摘要/高亮区间）、取数（笔记+资源归一）、接口类型
-lib/security/      文章 id 规则、路径闸门、资源 URL 白名单
+lib/security/      文章 id 规则、路径闸门、资源 URL 白名单、会话（session）、口令（password）、
+                   访问配置（auth-config）、登录限速、备份条目闸门（backup-entry）
 lib/fs/            原子写入（临时文件 + fsync + rename）、进程内写锁
-tests/             Vitest 单元测试（234 条，其中 1 条在本机会 skipped）
+proxy.ts           每个请求的第一道门（局域网认证 / 本机绑定 fail closed）
+scripts/           auth-lib / set-password / start-lan / env-file
+tests/             Vitest 单元测试（437 条，其中 1 条在本机会 skipped）
 docs/              需求书、架构决策、截图
+backups/           备份 zip（gitignored；明文，别放公开同步盘）
 public/            静态资源
 ```
 
-`data/` 与 `content/articles/` 在对应阶段创建/由你自己维护，仓库里不建空壳。
+`content/`（笔记、resources.json、tasks.json、.trash）由你自己维护，仓库里不建空壳；`backups/` 在第一次备份时创建，已 gitignore。
 
 ## 阶段进度
 
@@ -135,7 +175,7 @@ public/            静态资源
 | 4 | 资源收藏中心 | ✅ 2026-10-30 |
 | 5 | 全文搜索 | ✅ 2026-10-30 |
 | 6 | 学习任务与 Dashboard | ✅ 2026-10-30 |
-| 7 | 备份、安全与局域网访问 | ⬜ 未开始 |
+| 7 | 备份、安全与局域网访问 | ✅ 2026-10-30 |
 | 8 | 测试与本地发布 | ⬜ 未开始 |
 
 ### 阶段 2 具体做了什么
@@ -167,10 +207,15 @@ public/            静态资源
 
 ## 安全
 
-- 默认只监听 `127.0.0.1`，不自动开放局域网或公网
-- `.env*`、`data/`、`backups/` 已排除在 git 之外，仓库里不会有数据库、备份或密钥
-- 不提供服务端抓取任意 URL 的能力（避免 SSRF），外部链接只允许安全协议
-- 详细条目见 [docs/需求书.md](docs/需求书.md) §8
+- **默认只监听 `127.0.0.1`**：`dev` / `start` 脚本里写死 `-H 127.0.0.1`，有断言守着；从局域网 IP 连是 connection refused
+- **局域网必须显式打开**：只走 `npm run start:lan`（生产构建 + `ALLOW_LAN=1` + 绑定 `0.0.0.0`）；口令哈希或会话密钥缺一个就拒绝启动，不会退回「不登录也能看」
+- **认证覆盖读取与写入**：`proxy.ts`（第一道）→ 工作区布局（第二道）→ 每个 Server Action / 受保护 Route Handler 里的 `requireAuth()`（第三道）；`/login`、`/api/auth/login`、`/api/auth/logout` 之外全部要会话
+- **会话**：HttpOnly + SameSite=Lax + 12 小时；HMAC 签名，改 payload/签名/换密钥都会失效；登出清 cookie
+- **口令**：只存 scrypt 哈希在 `.env.local`（`scrypt:N:r:p:salt:hash`，用 `:` 避免 Next 的 `$` 变量展开）；登录连续失败 5 次锁 5 分钟
+- **备份**：`backups/` 已 gitignore；zip 是**明文**，不要放公开同步盘，也不要分享；备份**不含** `.env.local`
+- **不提供服务端抓取任意 URL 的能力**（避免 SSRF），外部链接只允许 http / https
+- **安全响应头**：X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、COOP/CORP；CSP 暂未启用（原因见 ADR D12）
+- **局域网是 HTTP，不加密**：只在可信 Wi-Fi 下用；不要做端口转发。详细条目见 [docs/需求书.md](docs/需求书.md) §8 与 [docs/架构决策.md](docs/架构决策.md) D12
 
 ## License
 
@@ -249,3 +294,41 @@ public/            静态资源
 - **统计口径只写一处**：`summarizeTasks()` 同时喂给总览和任务页的 chips，不各算各的
 - 断言：234 条（新增 48：任务模型 31、任务写入 16、资源 BOM 1）
 - **实测踩到的坑**：① **UTF-8 BOM** —— 用 PowerShell/记事本手改 `tasks.json` 会带上 BOM，`JSON.parse` 不认，界面报"不是合法 JSON"并拒绝写入（保护是对的，但文件其实没坏）。修法是在解析入口统一 `stripBom`，而不是要求用户"别用 BOM"；给任务和资源各补了一条断言，并先看着它失败；② 日期输入框不能"填"，只能逐个字段敲 —— 第一次敲成了 `0026-10-28`，表单当场把非法日期拦下来了（顺带证明校验生效）
+
+### 阶段 7 具体做了什么（备份、安全与局域网）
+
+**备份（D12）**
+
+- **一个 zip + 一份清单**：`content/` 下白名单文件（Markdown、`resources.json`、`tasks.json`、`.trash/` 留档）打成 `backups/ai-lab-<时间戳>.zip`，根目录带 `manifest.json`（版本、时间、每个文件的 sha256）
+- **建完立刻自检**：重读 zip，核对条目白名单、大小、sha256、压缩比、重复条目；任何一项不对就删掉这份新备份并报错。中文文件名按 UTF-8 原样往返（有测试）
+- **不备份什么**：`.env.local`（口令哈希/会话密钥不跟着 zip 走）、`backups/` 自己、`content/.trash/restore-*`（恢复时的二级副本，快照兜底）；不在白名单的文件会列出来，不静默丢
+
+**恢复（D12）**
+
+- **只从 `backups/` 列表选**，不接受上传；先预览「新增 / 覆盖 / 相同 / 只在当前」，预览带 `planHash`
+- **确认时重算 diff**：`planHash` 对不上（预览之后 content/ 又变了）直接拒绝，一个文件都不动
+- **先把现状存成 `pre-restore-*.zip` 并回读校验**，再做预检（父目录不能是 junction/symlink、目标不能是链接/目录），然后原子写入；**默认不删除**当前多出来的文件，勾选后移进 `content/.trash/restore-*`（不是真删）
+- **写完重扫比对 sha256**；中途失败自动用快照回滚。测试用**故障注入**让第二个文件写失败，断言 content/ 回到恢复前的字节状态
+- **坏备份不毁数据**：截断 zip、非 zip、路径穿越条目、压缩炸弹、大小/哈希不一致、清单外/缺失条目、坏 `resources.json` 都在写任何文件之前被拒；现有文件字节与 mtime 不变
+
+**认证与局域网（D12）**
+
+- 默认仍只听 `127.0.0.1`；`npm run start:lan` 用**生产构建** + 显式 `ALLOW_LAN=1`，启动前检查 `LAB_PASSWORD_HASH` / `SESSION_SECRET`，缺一个就退出
+- 口令只存 scrypt 哈希（`scrypt:N:r:p:salt:hash`）；会话是 HMAC 签名的 HttpOnly cookie，12 小时；登出清 cookie；换 `SESSION_SECRET` = 全端退出；登录失败 5 次锁 5 分钟
+- **三道门**：`proxy.ts` 每个请求先过（页面、RSC、action POST 都算）→ `(workspace)/layout.tsx` 的 `requirePageAuth()` → 每个 Server Action / 受保护 Route Handler 里的 `requireAuth()`。这样「页面拦了、action 没拦」不会发生
+- **fail closed**：局域网模式配置不齐 → 503 说明页；本机模式发现非本机 Host（有人绕过脚本手动绑 `0.0.0.0`）→ 503，不假装安全
+- **Windows / Android**：README 上面给了 `auth:set-password` → `build` → `start:lan` 的步骤和**只放行专用网络**的防火墙命令；手机连同一 Wi-Fi，用终端打印的局域网 IP 访问
+
+**断言与实测**
+
+- 断言 234 → **437 条**（436 通过 + 1 条文件级 symlink skipped）：备份条目 46、manifest/diff 23、备份读写 16、恢复 9、回滚故障注入 2、会话 16、口令 13、访问配置 42、登录限速 4、proxy 12、覆盖关系 7、脚本兼容 5，以及启动/源码闸门的增量
+- 真浏览器点过：建备份（6 个文件 / 3.4 KB，自检通过）→ 改一篇临时笔记 → 预览「覆盖 1」→ 确认恢复（自动生成 `pre-restore` 快照）→ 对快照点「回滚」→ 内容回到改前 → 删除临时笔记与测试备份
+- 真机网络：默认 `127.0.0.1` 从局域网 IP `connection refused`；`start:lan` 未登录请求 → 307 到 `/login`、action POST → 401、body 里 0 处笔记标题；用 curl 在局域网 IP 登录后拿到 200 与笔记内容；登出后同一 cookie 再请求回到 307
+- 构建 0 警告（Turbopack 对运行时路径的 tracing 警告用 `/*turbopackIgnore*/` 消掉）
+
+**实测踩到的坑**
+
+1. **`.env.local` 里的 `$` 会被 Next 展开**：scrypt 原格式 `scrypt$32768$…` 写进去，`$32768` 被当成变量展开成空，登录永远失败。改成 `scrypt:N:r:p:salt:hash`（冒号分隔），并在脚本与 lib 之间用一条测试钉住格式兼容
+2. **`next start -H 0.0.0.0` 时 `request.url` 可能是 `http://0.0.0.0:3100`**：用 `request.url` 做 Origin 比较或跳转，会把合法登录拒掉/把浏览器送到 `0.0.0.0`。改成优先用 Host 头还原 origin；浏览器在代理/扩展环境下还可能发 `Origin: null`，按「缺失」处理
+3. **同一路由段不能同时有 `page.tsx` 和 `route.ts`**：登录页放 `/login`，表单 POST 放 `/api/auth/login`
+4. **Turbopack 会把运行时拼接的路径当成「追踪整个项目」**：`path.join` 上加 `/*turbopackIgnore*/`，否则 build 出 4 条警告

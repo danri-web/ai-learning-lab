@@ -9,6 +9,7 @@ import {
   deleteResourceById,
   updateResourceFromFields,
 } from "@/features/resources/service";
+import { requireAuth } from "@/lib/security/auth";
 
 /**
  * 资源收藏的 Server Action 层：只做 FormData → 普通对象 + 刷新/跳转。
@@ -51,6 +52,7 @@ export async function createResourceAction(
   _prev: ResourceFormState,
   formData: FormData,
 ): Promise<ResourceFormState> {
+  await requireAuth();
   const result = await createResourceFromFields(readFields(formData));
   if (!result.ok) return toErrorState(result.error, result.fieldErrors);
 
@@ -62,6 +64,7 @@ export async function updateResourceAction(
   _prev: ResourceFormState,
   formData: FormData,
 ): Promise<ResourceFormState> {
+  await requireAuth();
   const id = text(formData, "id");
   const result = await updateResourceFromFields(id, readFields(formData), {
     base: text(formData, "base") || undefined,
@@ -77,6 +80,7 @@ export async function deleteResourceAction(
   _prev: ResourceFormState,
   formData: FormData,
 ): Promise<ResourceFormState> {
+  await requireAuth();
   const result = await deleteResourceById(text(formData, "id"));
   if (!result.ok) return toErrorState(result.error);
 

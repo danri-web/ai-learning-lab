@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { readAuthConfig } from "@/lib/security/auth-config";
 import { Brand } from "./brand";
 import { SidebarNav } from "./sidebar-nav";
 import { TopBar } from "./top-bar";
@@ -9,6 +10,7 @@ import { TopBar } from "./top-bar";
  * 所有 `min-w-0` 都是为了「不出现横向溢出」（README §6 手机端要求）。
  */
 export function AppShell({ children }: { children: ReactNode }) {
+  const config = readAuthConfig();
   return (
     <div className="flex min-h-dvh flex-col bg-background">
       <a
@@ -23,9 +25,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <SidebarNav />
           <div className="border-t border-border px-4 py-3">
             <p className="text-[11px] leading-relaxed text-muted-foreground">
-              阶段 6 · 知识库 / 资源 / 任务
+              阶段 7 · 备份 / 认证 / 局域网
               <br />
-              Ctrl+K 搜全库；备份与认证见需求书 §7
+              Ctrl+K 搜全库；数据与备份都在这台电脑上
             </p>
           </div>
         </aside>
@@ -39,7 +41,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             {children}
           </main>
           <footer className="border-t border-border px-4 py-4 text-[11px] text-muted-foreground md:px-8">
-            本地优先 · 默认只监听 127.0.0.1 · 数据不出本机
+            {config.allowLan
+              ? "局域网模式 · HTTP 未加密 · 数据不出本机"
+              : "本地优先 · 默认只监听 127.0.0.1 · 数据不出本机"}
           </footer>
         </div>
       </div>

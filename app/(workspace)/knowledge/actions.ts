@@ -9,6 +9,7 @@ import {
   saveArticleFromFields,
 } from "@/features/articles/service";
 import type { FormState } from "@/features/articles/form-state";
+import { requireAuth } from "@/lib/security/auth";
 
 /**
  * Server Action 层（docs/架构决策.md D4）：**只做三件事** ——
@@ -54,6 +55,7 @@ export async function createArticleAction(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
+  await requireAuth();
   const result = await createArticleFromFields(readFields(formData));
   if (!result.ok) return toErrorState(result.error, result.fieldErrors);
 
@@ -69,6 +71,7 @@ export async function createArticleAction(
  *   - `force`：用户看到冲突后点「覆盖保存」才带 1
  */
 export async function saveArticleAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  await requireAuth();
   const id = text(formData, "id");
   const result = await saveArticleFromFields(id, readFields(formData), {
     base: text(formData, "base") || undefined,
@@ -86,6 +89,7 @@ export async function deleteArticleAction(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
+  await requireAuth();
   const id = text(formData, "id");
   const result = await deleteArticleById(id);
   if (!result.ok) return toErrorState(result.error);

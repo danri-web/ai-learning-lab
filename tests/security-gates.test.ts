@@ -50,9 +50,6 @@ const RULES: Rule[] = [
     allow: ["lib/fs/atomic-write.ts"],
   },
   {
-    // docs/架构决策.md D4：写入链路是「Server Action → service → lib/content/write」。
-    // 页面（app/ 下）如果直接 import 写入模块，就等于跳过了 service 的字段校验，
-    // 所以这里把"谁能 import 写入模块"钉死成唯一一个文件。
     name: "只有 service 能 import 写入模块（页面不许直接写文件）",
     pattern: /from\s+["']@\/lib\/content\/(?:write|resources-store|tasks-store)["']/,
     allow: [
@@ -60,6 +57,13 @@ const RULES: Rule[] = [
       "features/resources/service.ts",
       "features/tasks/service.ts",
     ],
+  },
+  {
+    // 阶段 7：备份/恢复也会改 content/，同样只能由 backup service 调。
+    // 例外是 restore-store 自己复用 backup-store 的快照函数（lib 内部依赖，不是页面绕过）。
+    name: "只有 backup service 能 import 备份/恢复写入模块",
+    pattern: /from\s+["']@\/lib\/content\/(?:backup-store|restore-store)["']/,
+    allow: ["features/backup/service.ts", "lib/content/restore-store.ts"],
   },
 ];
 
@@ -163,6 +167,22 @@ describe("源码闸门（功能未实现也先锁住）", () => {
           text: 'import { createTask } from "@/lib/content/tasks-store";',
         },
         target: "只有 service",
+      },
+      {
+        // 阶段 7：备份页绕过 service 直接调 backup-store
+        fixture: {
+          path: "app/(workspace)/backup/page.tsx",
+          text: 'import { createBackup } from "@/lib/content/backup-store";',
+        },
+        target: "备份/恢复",
+      },
+      {
+        // 阶段 7：action 绕过 service 直接调 restore-store
+        fixture: {
+          path: "app/(workspace)/backup/actions.ts",
+          text: 'import { applyRestore } from "@/lib/content/restore-store";',
+        },
+        target: "备份/恢复",
       },
     ];
 
