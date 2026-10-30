@@ -449,7 +449,7 @@ public/            静态资源
   `git clone（HEAD）→ npm ci（771 包，约 1 分钟）→ 放手机测试备份 zip → build → start →`
   `/backup 预览（新增 7 / 覆盖 0）→ 执行恢复 → 2 篇笔记 + 资源 + 任务都回来`；
   干净副本里再跑一遍 Vitest 也全过
-- **断言**：444 → **465**（464 通过 + 1 skipped）。新增 `tests/error-boundary.test.ts` 3 条、`tests/e2e-safety.test.ts` 13 条 + `tests/e2e-lock.test.ts` 5 条；E2E 单独一条命令，不进 `verify`。**2026-10-30 外部验收审计 + 三轮复核后共补了 71 条**（frontmatter 执行 5 + 登录体/限速 7 + TOC 3 + DATA-01 恢复日志 17 + v2 审计的 Unicode 空白与写入闸门 22 + v3b 复核的重复 BOM/查询失败/重试/排队 12 + v3c 复核的缓存边界与无换行 4 + v3d 复核的启动提示消费 1），当前 **536**（535 + 1 skipped）
+- **断言**：444 → **465**（464 通过 + 1 skipped）。新增 `tests/error-boundary.test.ts` 3 条、`tests/e2e-safety.test.ts` 13 条 + `tests/e2e-lock.test.ts` 5 条；E2E 单独一条命令，不进 `verify`。**2026-10-30 外部验收审计 + 三轮复核后共补了 71 条**（frontmatter 执行 5 + 登录体/限速 7 + TOC 3 + DATA-01 恢复日志 17 + v2 审计的 Unicode 空白与写入闸门 22 + v3b 复核的重复 BOM/查询失败/重试/排队 12 + v3c 复核的缓存边界与无换行 4 + v3d 复核的启动提示消费 1），当前 **536**（535 + 1 skipped）；P1 清理后为 **569**（568 + 1 skipped）
 - **实测踩到的坑**：① Turbopack 以最近的 lockfile 当工作区根，**不接受指向工作区外的 node_modules 目录联接**（`Could not find the Next.js package`）→ 改成 robocopy 真实复制；② React 19 在 form action 后 reset 表单，`<select>`/radio 的 value 没变时不会写回 DOM → 校验失败后控件看起来被清空（已修 + E2E 回归）；③ Next 的路由播报器也是 `role="alert"`，E2E 取 alert 必须收窄；④ 404 页的主文档本身会记一条 console error，不能和"脚本报错"混在一起断言；⑤ Pixel 7 设备档 + 系统 Chrome 要用 `channel: "chrome"`，否则会去找没下载的 Chromium
 
 ### 外部验收审计（GPT，2026-10-30）：High 为真，已修；架构偏离待拍板
