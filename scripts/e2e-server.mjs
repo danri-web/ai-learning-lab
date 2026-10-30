@@ -46,6 +46,12 @@ const MARKER = path.join(SCRATCH, ".ai-learning-lab-e2e");
  * 两个 Playwright 同时跑同一副本时，一个会删掉另一个正在用的文件（审计 v5 F3）。
  */
 const LOCK = path.join(SCRATCH, ".ai-learning-lab-e2e.lock");
+/**
+ * 回收守卫：自动回收旧锁时，同一时刻只允许一个进程做 inspect → remove → recreate。
+ * 没有它，两个进程都判定旧锁已死时，A 删旧建新之后 B 可能删掉 A 的新锁（审计 v6 P2）。
+ * 回收守卫本身残留（进程在回收中崩）时 fail closed，让人确认后手动清理。
+ */
+const RECLAIM = path.join(SCRATCH, ".ai-learning-lab-e2e.lock.reclaim");
 const CASE_INSENSITIVE_FS = process.platform === "win32" || process.platform === "darwin";
 const FIXTURES = path.join(REPO, "e2e", "fixtures", "content");
 const NEXT_BIN = path.join(APP, "node_modules", "next", "dist", "bin", "next");
@@ -67,6 +73,7 @@ const SKIP_DIRS = new Set([
 ]);
 
 let lockHeld = false;
+let reclaimHeld = false;
 
 function releaseLockSync() {
   if (!lockHeld) return;
@@ -74,12 +81,23 @@ function releaseLockSync() {
   try {
     rmSync(LOCK, { force: true });
   } catch {
-    // 正在退出，尽力而为；残留锁由下一次启动按 PID 判活后清理
+    // 正在退出，尽力而为；残留锁由下一次启动安全回收
+  }
+}
+
+function releaseReclaimSync() {
+  if (!reclaimHeld) return;
+  reclaimHeld = false;
+  try {
+    rmSync(RECLAIM, { force: true });
+  } catch {
+    // 同上
   }
 }
 
 function fail(message) {
   releaseLockSync();
+  releaseReclaimSync();
   console.error(`\n✗ E2E 服务器：${message}\n`);
   process.exit(1);
 }
@@ -102,6 +120,21 @@ async function realpathOrNull(target) {
   } catch {
     return null;
   }
+}
+
+/**
+ * 是不是链接 / 目录联接（junction）。
+ *
+ * ⚠️ 不能只信 `lstat().isSymbolicLink()`：Windows 的 junction 在本机实测是
+ * `isSymbolicLink=false, isDirectory=true`（2026-10-30 探针）。所以再看
+ * `realpath` 是否与传入路径不同 —— 链接会解析到别处，普通目录不会。
+ */
+async function isLinkLike(target) {
+  const stat = await fs.lstat(target).catch(() => null);
+  if (!stat) return false;
+  if (stat.isSymbolicLink()) return true;
+  const real = await realpathOrNull(target);
+  return Boolean(real && !samePath(real, target));
 }
 
 function assertSafeScratch() {
@@ -148,6 +181,9 @@ async function assertPhysicalScratch() {
     );
   }
   const realApp = await realpathOrNull(APP);
+  if (realApp && !samePath(realApp, APP)) {
+    fail(`app/ 不是普通目录（是链接或 junction），拒绝操作：\n  ${APP}\n  -> ${realApp}`);
+  }
   if (
     realApp &&
     (samePath(realApp, realRepo) || isInside(realApp, realRepo) || isInside(realRepo, realApp))
@@ -156,45 +192,103 @@ async function assertPhysicalScratch() {
   }
 }
 
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0); // 只探活，不发信号
+    return true;
+  } catch (error) {
+    return error.code === "EPERM"; // 活着但没权限
+  }
+}
+
+/** `wx` 原子创建主锁；失败抛错给调用者判断 */
+async function createLock() {
+  const handle = await fs.open(LOCK, "wx");
+  try {
+    await handle.writeFile(String(process.pid), "utf8");
+  } finally {
+    await handle.close();
+  }
+  lockHeld = true;
+}
+
 /**
  * 同一份 scratch 同时只允许一个 E2E 进程（审计 v5 F3）。
- * `wx` 是原子创建；已存在时读 PID 判活，死进程留下的锁自动清理。
+ *
+ * - 主锁用 `wx` 原子创建；已存在时先看 PID。
+ * - 活 PID → 直接拒绝；空锁 / 读不出的锁 → fail closed（可能是别人刚建还没写完）。
+ * - 死 PID → 自动回收，但必须持有**回收守卫**（`wx`）：
+ *   两个进程都判旧锁已死时，只有一个能进回收区；另一个 fail closed。
+ *   回收前会重读锁并再判活，防止把刚被替换的活锁删掉（审计 v6 P2）。
+ * - 进程被强杀留下的主锁，由下一次启动安全回收；回收守卫本身残留则要人工清理。
  */
 async function acquireLock() {
   await fs.mkdir(SCRATCH, { recursive: true });
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+
+  try {
+    await createLock();
+    return;
+  } catch (error) {
+    if (error.code !== "EEXIST") fail(`拿不到副本锁：${LOCK}（${error.code ?? error.message}）`);
+  }
+
+  const raw = await fs.readFile(LOCK, "utf8").catch(() => "");
+  const pid = Number(raw.trim());
+  if (!Number.isInteger(pid) || pid <= 0) {
+    fail(
+      `副本已被占用（锁 ${LOCK}，PID 未知或为空）。\n` +
+        `空锁可能是另一个 E2E 刚建还没写完：不会自动处理，确认没有其他 E2E 后手动删除锁文件。`,
+    );
+  }
+  if (isProcessAlive(pid)) {
+    fail(
+      `另一个 E2E 正在使用同一份副本（pid ${pid}）：${SCRATCH}\n` +
+        `等它结束，或换一个 E2E_SCRATCH。`,
+    );
+  }
+
+  // 旧锁的 PID 已死：用回收守卫把「删旧 → 建新」串行化
+  try {
+    const handle = await fs.open(RECLAIM, "wx");
     try {
-      const handle = await fs.open(LOCK, "wx");
-      try {
-        await handle.writeFile(String(process.pid), "utf8");
-      } finally {
-        await handle.close();
-      }
-      lockHeld = true;
-      return;
+      await handle.writeFile(String(process.pid), "utf8");
+    } finally {
+      await handle.close();
+    }
+    reclaimHeld = true;
+  } catch (error) {
+    if (error.code === "EEXIST") {
+      fail(
+        `另一个 E2E 正在回收旧锁或启动中（守卫 ${RECLAIM} 存在）。\n` +
+          `确认没有其他 E2E 后，手动删除它和 ${LOCK}。`,
+      );
+    }
+    fail(`拿不到回收守卫：${RECLAIM}（${error.code ?? error.message}）`);
+  }
+
+  try {
+    // 拿到守卫后重读：如果锁已被别人替换成活锁，放弃，绝不删
+    const againRaw = await fs.readFile(LOCK, "utf8").catch(() => "");
+    const againPid = Number(againRaw.trim());
+    if (againPid !== pid || isProcessAlive(againPid)) {
+      fail(
+        `旧锁在回收期间被替换（${raw.trim() || "空"} → ${againRaw.trim() || "空"}），` +
+          `放弃回收，避免删掉活锁。`,
+      );
+    }
+    await fs.rm(LOCK, { force: true });
+    try {
+      await createLock();
+      console.log(`[e2e] 旧锁已回收（pid ${pid} 已退出）`);
     } catch (error) {
-      if (error.code !== "EEXIST") fail(`拿不到副本锁：${LOCK}（${error.code ?? error.message}）`);
-      const raw = await fs.readFile(LOCK, "utf8").catch(() => "");
-      const pid = Number(raw.trim());
-      let alive = false;
-      if (Number.isInteger(pid) && pid > 0) {
-        try {
-          process.kill(pid, 0); // 只探活，不发信号
-          alive = true;
-        } catch (probeError) {
-          alive = probeError.code === "EPERM"; // 活着但没权限
-        }
-      }
-      if (alive) {
-        fail(
-          `另一个 E2E 正在使用同一份副本（pid ${pid}）：${SCRATCH}\n` +
-            `等它结束，或换一个 E2E_SCRATCH；不要同时跑两个 Playwright。`,
-        );
-      }
-      await fs.rm(LOCK, { force: true });
+      fail(`回收旧锁时被另一个进程抢先：${error.code ?? error.message}`);
+    }
+  } finally {
+    if (reclaimHeld) {
+      reclaimHeld = false;
+      await fs.rm(RECLAIM, { force: true }).catch(() => {});
     }
   }
-  fail(`无法获取副本锁：${LOCK}`);
 }
 
 /** 复制工作树（保留未提交的改动），跳过重目录、用户数据与密钥 */
@@ -216,8 +310,13 @@ async function removeApp() {
   const nodeModules = path.join(APP, "node_modules");
   try {
     const stat = await fs.lstat(nodeModules);
-    // 目录联接必须先拆掉链接本身，不能递归进真实 node_modules
-    if (stat.isSymbolicLink()) await fs.unlink(nodeModules);
+    // 目录联接必须先拆掉链接本身，不能递归进真实 node_modules。
+    // 不能只信 lstat：Windows junction 在 lstat 里是目录（实测），用 realpath 再判一次。
+    if (stat.isSymbolicLink()) {
+      await fs.unlink(nodeModules);
+    } else if (await isLinkLike(nodeModules)) {
+      await fs.rmdir(nodeModules);
+    }
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
@@ -232,11 +331,16 @@ async function removeApp() {
 async function assertOwnedScratch() {
   const appStat = await fs.lstat(APP).catch(() => null);
   if (!appStat) return;
-  if (appStat.isSymbolicLink() || !appStat.isDirectory()) {
-    fail(`副本 app/ 不是普通目录，拒绝操作：${APP}`);
+  if (appStat.isSymbolicLink() || !appStat.isDirectory() || (await isLinkLike(APP))) {
+    fail(`副本 app/ 不是普通目录（可能是链接/junction），拒绝操作：${APP}`);
   }
   const markerStat = await fs.lstat(MARKER).catch(() => null);
-  if (!markerStat || markerStat.isSymbolicLink() || !markerStat.isFile()) {
+  if (
+    !markerStat ||
+    markerStat.isSymbolicLink() ||
+    !markerStat.isFile() ||
+    (await isLinkLike(MARKER))
+  ) {
     fail(
       `副本目录已存在、但不是本脚本建的（缺标记 ${MARKER}）：${APP}\n` +
         `为免误删别人的目录，先手动确认并删除它，或换一个 E2E_SCRATCH。`,
@@ -381,6 +485,7 @@ function cleanup() {
   shuttingDown = true;
   for (const child of children) killTree(child.pid);
   releaseLockSync();
+  releaseReclaimSync();
 }
 
 /** 子进程意外退出时让 supervisor 也失败，不要留下「半个服务」继续跑 */

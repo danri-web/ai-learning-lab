@@ -58,11 +58,13 @@ describe("E2E 隔离", () => {
   it("E2E_REUSE=1 不能绕过所有权检查（未标记的构建不能复用）", async () => {
     // 审计 v5 F1：复用分支以前跳过 prepare，也就跳过了所有权检查，
     // 会直接拿一个未标记的 app/（可能装着真实笔记）起服务并写入。
+    // 哨兵放在 content/ 里：如果所有权被绕过、走到 resetData，它会被删掉。
     const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "e2e-reuse-"));
     const app = path.join(scratch, "app");
     await fs.mkdir(path.join(app, ".next"), { recursive: true });
     await fs.writeFile(path.join(app, ".next", "BUILD_ID"), "fake-build", "utf8");
-    await fs.writeFile(path.join(app, "keep.txt"), "真实数据", "utf8");
+    await fs.mkdir(path.join(app, "content"), { recursive: true });
+    await fs.writeFile(path.join(app, "content", "sentinel.txt"), "真实数据", "utf8");
 
     const result = spawnSync(process.execPath, ["scripts/e2e-server.mjs"], {
       cwd: ROOT,
@@ -73,8 +75,9 @@ describe("E2E 隔离", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("不是本脚本建的");
-    expect(result.stderr).not.toContain("[e2e] 就绪");
-    expect(await fs.readFile(path.join(app, "keep.txt"), "utf8")).toBe("真实数据");
+    // 就绪日志在 stdout：要断言「它根本没走到起服务」
+    expect(result.stdout).not.toContain("[e2e] 就绪");
+    expect(await fs.readFile(path.join(app, "content", "sentinel.txt"), "utf8")).toBe("真实数据");
 
     await fs.rm(scratch, { recursive: true, force: true });
   });
@@ -96,7 +99,8 @@ describe("E2E 隔离", () => {
 
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("物理路径");
-      // 仓库还在：真实源码一个都不能少
+      // 真正的破坏目标是 ROOT/app：连里面的源码都要在（不只是 package.json）
+      expect(await fs.stat(path.join(ROOT, "app", "layout.tsx"))).toBeTruthy();
       expect(await fs.stat(path.join(ROOT, "package.json"))).toBeTruthy();
 
       await fs.rmdir(alias);
@@ -122,6 +126,163 @@ describe("E2E 隔离", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("另一个 E2E");
+    expect(result.stderr).toContain(`pid ${process.pid}`);
+
+    await fs.rm(scratch, { recursive: true, force: true });
+  });
+
+  it("旧锁（死 PID）会被安全回收，但回收后仍要过所有权检查（审计 v6 P2）", async () => {
+    // 两个进程都判旧锁已死时，回收必须串行（回收守卫），不能互相删新锁。
+    // 这里验证：回收能发生，但后续所有权检查仍然挡住未标记的 app/。
+    const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "e2e-stale-"));
+    const app = path.join(scratch, "app");
+    await fs.mkdir(app, { recursive: true });
+    await fs.writeFile(path.join(app, "keep.txt"), "不要删我", "utf8");
+    await fs.writeFile(path.join(scratch, ".ai-learning-lab-e2e.lock"), "999999", "utf8");
+
+    const result = spawnSync(process.execPath, ["scripts/e2e-server.mjs"], {
+      cwd: ROOT,
+      env: { ...process.env, E2E_SCRATCH: scratch, E2E_REUSE: "" },
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("不是本脚本建的");
+    // 回收后自己建的锁随 fail 释放，守卫也不能留
+    await expect(fs.access(path.join(scratch, ".ai-learning-lab-e2e.lock"))).rejects.toThrow();
+    await expect(
+      fs.access(path.join(scratch, ".ai-learning-lab-e2e.lock.reclaim")),
+    ).rejects.toThrow();
+    expect(await fs.readFile(path.join(app, "keep.txt"), "utf8")).toBe("不要删我");
+
+    await fs.rm(scratch, { recursive: true, force: true });
+  });
+
+  it("回收守卫已存在时 fail closed（第二个回收者不能进破坏区）", async () => {
+    const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "e2e-reclaim-"));
+    const lock = path.join(scratch, ".ai-learning-lab-e2e.lock");
+    const reclaim = `${lock}.reclaim`;
+    await fs.writeFile(lock, "999999", "utf8");
+    await fs.writeFile(reclaim, String(process.pid), "utf8");
+
+    const result = spawnSync(process.execPath, ["scripts/e2e-server.mjs"], {
+      cwd: ROOT,
+      env: { ...process.env, E2E_SCRATCH: scratch, E2E_REUSE: "" },
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("正在回收");
+    // 旧锁和守卫都不动：等正在回收的那个进程结束 / 人工确认
+    expect(await fs.readFile(lock, "utf8")).toBe("999999");
+    expect(await fs.readFile(reclaim, "utf8")).toBe(String(process.pid));
+
+    await fs.rm(scratch, { recursive: true, force: true });
+  });
+
+  it("空锁文件也按占用处理（不能当成死锁清掉）", async () => {
+    const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "e2e-empty-lock-"));
+    const lock = path.join(scratch, ".ai-learning-lab-e2e.lock");
+    await fs.writeFile(lock, "", "utf8");
+
+    const result = spawnSync(process.execPath, ["scripts/e2e-server.mjs"], {
+      cwd: ROOT,
+      env: { ...process.env, E2E_SCRATCH: scratch, E2E_REUSE: "" },
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("副本已被占用");
+    expect(await fs.readFile(lock, "utf8")).toBe("");
+
+    await fs.rm(scratch, { recursive: true, force: true });
+  });
+
+  it.skipIf(process.platform !== "win32")(
+    "app/ 本身是 junction 时拒绝（避免删到链接目标）",
+    async () => {
+      const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "e2e-applink-"));
+      const target = await fs.mkdtemp(path.join(os.tmpdir(), "e2e-apptarget-"));
+      await fs.writeFile(path.join(target, "keep.txt"), "链接目标", "utf8");
+      await fs.symlink(target, path.join(scratch, "app"), "junction");
+      await fs.writeFile(path.join(scratch, ".ai-learning-lab-e2e"), "owned", "utf8");
+
+      const result = spawnSync(process.execPath, ["scripts/e2e-server.mjs"], {
+        cwd: ROOT,
+        env: { ...process.env, E2E_SCRATCH: scratch, E2E_REUSE: "" },
+        encoding: "utf8",
+        timeout: 30_000,
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("不是普通目录");
+      expect(await fs.readFile(path.join(target, "keep.txt"), "utf8")).toBe("链接目标");
+
+      await fs.rmdir(path.join(scratch, "app"));
+      await fs.rm(scratch, { recursive: true, force: true });
+      await fs.rm(target, { recursive: true, force: true });
+    },
+  );
+
+  it("所有权标记是目录时不算数（标记必须是普通文件）", async () => {
+    const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "e2e-marker-"));
+    await fs.mkdir(path.join(scratch, "app"), { recursive: true });
+    await fs.writeFile(path.join(scratch, "app", "keep.txt"), "不要删我", "utf8");
+    // 标记做成目录：旧实现只 fs.access，存在就算数
+    await fs.mkdir(path.join(scratch, ".ai-learning-lab-e2e"), { recursive: true });
+
+    const result = spawnSync(process.execPath, ["scripts/e2e-server.mjs"], {
+      cwd: ROOT,
+      env: { ...process.env, E2E_SCRATCH: scratch, E2E_REUSE: "" },
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("不是本脚本建的");
+    expect(await fs.readFile(path.join(scratch, "app", "keep.txt"), "utf8")).toBe("不要删我");
+
+    await fs.rm(scratch, { recursive: true, force: true });
+  });
+
+  it("E2E_REUSE=1 会重置 content/backups；子进程失败会带走 supervisor", async () => {
+    const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "e2e-reset-"));
+    const app = path.join(scratch, "app");
+    await fs.mkdir(path.join(app, ".next"), { recursive: true });
+    await fs.writeFile(path.join(app, ".next", "BUILD_ID"), "fake-build", "utf8");
+    await fs.writeFile(path.join(scratch, ".ai-learning-lab-e2e"), "owned", "utf8");
+    await fs.mkdir(path.join(app, "content"), { recursive: true });
+    await fs.writeFile(path.join(app, "content", "old-note.txt"), "上一轮留下的", "utf8");
+    await fs.mkdir(path.join(app, "backups"), { recursive: true });
+    await fs.writeFile(path.join(app, "backups", "old.zip"), "x", "utf8");
+
+    const result = spawnSync(process.execPath, ["scripts/e2e-server.mjs"], {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        E2E_SCRATCH: scratch,
+        E2E_REUSE: "1",
+        E2E_PORT: "3298",
+        E2E_LAN_PORT: "3299",
+      },
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+
+    // 副本里没有 node_modules/next：子进程必然起不来，supervisor 不能装作没事
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("意外退出");
+    // 旧数据被清掉，夹具被重新写入
+    await expect(fs.access(path.join(app, "content", "old-note.txt"))).rejects.toThrow();
+    await expect(fs.access(path.join(app, "backups"))).rejects.toThrow();
+    const fixture = await fs.readFile(
+      path.join(app, "content", "articles", "E2E-基线笔记.md"),
+      "utf8",
+    );
+    expect(fixture).toContain("E2E 基线笔记");
 
     await fs.rm(scratch, { recursive: true, force: true });
   });
