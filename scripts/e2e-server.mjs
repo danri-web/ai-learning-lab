@@ -22,6 +22,7 @@
  *   E2E_SCRATCH=<仓库外的目录> node scripts/e2e-server.mjs
  */
 import { spawn, spawnSync } from "node:child_process";
+import { rmSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -40,6 +41,12 @@ const APP = path.join(SCRATCH, "app");
  * 恰好有 `app/` 子目录的项目根目录，把别人的源码删掉。
  */
 const MARKER = path.join(SCRATCH, ".ai-learning-lab-e2e");
+/**
+ * 运行锁：同一份 scratch 同时只允许一个 E2E 进程。
+ * 两个 Playwright 同时跑同一副本时，一个会删掉另一个正在用的文件（审计 v5 F3）。
+ */
+const LOCK = path.join(SCRATCH, ".ai-learning-lab-e2e.lock");
+const CASE_INSENSITIVE_FS = process.platform === "win32" || process.platform === "darwin";
 const FIXTURES = path.join(REPO, "e2e", "fixtures", "content");
 const NEXT_BIN = path.join(APP, "node_modules", "next", "dist", "bin", "next");
 
@@ -59,7 +66,20 @@ const SKIP_DIRS = new Set([
   "coverage",
 ]);
 
+let lockHeld = false;
+
+function releaseLockSync() {
+  if (!lockHeld) return;
+  lockHeld = false;
+  try {
+    rmSync(LOCK, { force: true });
+  } catch {
+    // 正在退出，尽力而为；残留锁由下一次启动按 PID 判活后清理
+  }
+}
+
 function fail(message) {
+  releaseLockSync();
   console.error(`\n✗ E2E 服务器：${message}\n`);
   process.exit(1);
 }
@@ -67,6 +87,21 @@ function fail(message) {
 function isInside(child, parent) {
   const rel = path.relative(path.resolve(parent), path.resolve(child));
   return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+/** Windows / macOS 的文件系统大小写不敏感（同 lib/security/paths.ts 的平台语义） */
+function samePath(left, right) {
+  const a = path.resolve(left);
+  const b = path.resolve(right);
+  return CASE_INSENSITIVE_FS ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+async function realpathOrNull(target) {
+  try {
+    return await fs.realpath(target);
+  } catch {
+    return null;
+  }
 }
 
 function assertSafeScratch() {
@@ -85,6 +120,81 @@ function assertSafeScratch() {
   if (isInside(REPO, APP)) {
     fail(`副本目录不能包含仓库本身：${APP}`);
   }
+}
+
+/**
+ * 物理路径校验（审计 v5 F2）。
+ *
+ * 词法检查只看字符串：`E2E_SCRATCH` 如果是指向仓库的目录联接（junction），
+ * 字符串在仓库外、`realpath` 却落在仓库里 —— 后面的 `removeApp()` 会删掉真实 `app/` 源码。
+ * 所以删除之前必须把 SCRATCH 与 APP 解析成真实路径，再和仓库的真实路径比，
+ * **两边都查**（别名在仓库内 / 别名包含仓库）。APP 可能还不存在，存在时才查。
+ */
+async function assertPhysicalScratch() {
+  const realRepo = await fs.realpath(REPO);
+  let realScratch;
+  try {
+    realScratch = await fs.realpath(SCRATCH);
+  } catch (error) {
+    fail(`副本目录不可用：${SCRATCH}（${error.code ?? error.message}）`);
+  }
+  if (
+    samePath(realScratch, realRepo) ||
+    isInside(realScratch, realRepo) ||
+    isInside(realRepo, realScratch)
+  ) {
+    fail(
+      `副本的物理路径与仓库重叠，拒绝操作：\n  scratch（真实路径）= ${realScratch}\n  repo（真实路径）  = ${realRepo}`,
+    );
+  }
+  const realApp = await realpathOrNull(APP);
+  if (
+    realApp &&
+    (samePath(realApp, realRepo) || isInside(realApp, realRepo) || isInside(realRepo, realApp))
+  ) {
+    fail(`app/ 的物理路径与仓库重叠，拒绝操作：${realApp}`);
+  }
+}
+
+/**
+ * 同一份 scratch 同时只允许一个 E2E 进程（审计 v5 F3）。
+ * `wx` 是原子创建；已存在时读 PID 判活，死进程留下的锁自动清理。
+ */
+async function acquireLock() {
+  await fs.mkdir(SCRATCH, { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const handle = await fs.open(LOCK, "wx");
+      try {
+        await handle.writeFile(String(process.pid), "utf8");
+      } finally {
+        await handle.close();
+      }
+      lockHeld = true;
+      return;
+    } catch (error) {
+      if (error.code !== "EEXIST") fail(`拿不到副本锁：${LOCK}（${error.code ?? error.message}）`);
+      const raw = await fs.readFile(LOCK, "utf8").catch(() => "");
+      const pid = Number(raw.trim());
+      let alive = false;
+      if (Number.isInteger(pid) && pid > 0) {
+        try {
+          process.kill(pid, 0); // 只探活，不发信号
+          alive = true;
+        } catch (probeError) {
+          alive = probeError.code === "EPERM"; // 活着但没权限
+        }
+      }
+      if (alive) {
+        fail(
+          `另一个 E2E 正在使用同一份副本（pid ${pid}）：${SCRATCH}\n` +
+            `等它结束，或换一个 E2E_SCRATCH；不要同时跑两个 Playwright。`,
+        );
+      }
+      await fs.rm(LOCK, { force: true });
+    }
+  }
+  fail(`无法获取副本锁：${LOCK}`);
 }
 
 /** 复制工作树（保留未提交的改动），跳过重目录、用户数据与密钥 */
@@ -114,15 +224,19 @@ async function removeApp() {
   await fs.rm(APP, { recursive: true, force: true, maxRetries: 3 });
 }
 
-/** `app/` 已存在但没有我们的标记 → 拒绝删除（可能是别人的目录） */
+/**
+ * `app/` 已存在但没有我们的标记 → 拒绝删除（可能是别人的目录）。
+ * 标记必须是**普通文件**：目录联接/符号链接不算数（审计 v5 Q1：标记类型也要验）。
+ * `app/` 本身也必须是普通目录，不能是链接。
+ */
 async function assertOwnedScratch() {
-  const stat = await fs.lstat(APP).catch(() => null);
-  if (!stat) return;
-  const owned = await fs.access(MARKER).then(
-    () => true,
-    () => false,
-  );
-  if (!owned) {
+  const appStat = await fs.lstat(APP).catch(() => null);
+  if (!appStat) return;
+  if (appStat.isSymbolicLink() || !appStat.isDirectory()) {
+    fail(`副本 app/ 不是普通目录，拒绝操作：${APP}`);
+  }
+  const markerStat = await fs.lstat(MARKER).catch(() => null);
+  if (!markerStat || markerStat.isSymbolicLink() || !markerStat.isFile()) {
     fail(
       `副本目录已存在、但不是本脚本建的（缺标记 ${MARKER}）：${APP}\n` +
         `为免误删别人的目录，先手动确认并删除它，或换一个 E2E_SCRATCH。`,
@@ -168,17 +282,25 @@ async function writeFixtures() {
 }
 
 async function prepare() {
-  assertSafeScratch();
-  await assertOwnedScratch();
   console.log(`[e2e] 副本：${APP}`);
   await removeApp();
-  await fs.mkdir(SCRATCH, { recursive: true });
-  await fs.writeFile(MARKER, "created by scripts/e2e-server.mjs\n", "utf8");
+  await fs.writeFile(MARKER, `created by scripts/e2e-server.mjs\npid=${process.pid}\n`, "utf8");
   await fs.mkdir(APP, { recursive: true });
   await copyTree();
   await copyNodeModules();
   await writeFixtures();
   console.log("[e2e] 已复制工作树与 node_modules、写入固定夹具（真实 content/ 未参与）");
+}
+
+/**
+ * `E2E_REUSE=1` 只复用**构建**，测试数据必须重置（审计 v5 F1）。
+ * 复用结果只用于调测试，不作为验收依据 —— 构建可能已经落后于当前源码。
+ */
+async function resetData() {
+  await fs.rm(path.join(APP, "content"), { recursive: true, force: true });
+  await fs.rm(path.join(APP, "backups"), { recursive: true, force: true });
+  await writeFixtures();
+  console.log("[e2e] E2E_REUSE=1：复用上次构建，已重置 content/ 与 backups/（仅用于调试）");
 }
 
 function run(command, args, options) {
@@ -240,6 +362,7 @@ async function waitFor(url, expected, timeoutMs = 60_000) {
 }
 
 const children = [];
+let shuttingDown = false;
 
 function killTree(pid) {
   if (!pid) return;
@@ -255,7 +378,19 @@ function killTree(pid) {
 }
 
 function cleanup() {
+  shuttingDown = true;
   for (const child of children) killTree(child.pid);
+  releaseLockSync();
+}
+
+/** 子进程意外退出时让 supervisor 也失败，不要留下「半个服务」继续跑 */
+function onChildExit(name, code, signal) {
+  if (shuttingDown) return;
+  console.error(
+    `[e2e] ${name} 进程意外退出（code=${code ?? "-"}${signal ? `, signal=${signal}` : ""}）`,
+  );
+  cleanup();
+  process.exit(1);
 }
 
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
@@ -267,6 +402,13 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
 
 async function main() {
   assertSafeScratch();
+  await fs.mkdir(SCRATCH, { recursive: true });
+  // 先确认物理路径不落在仓库里，再拿锁 / 删任何东西（审计 v5 F2）
+  await assertPhysicalScratch();
+  await acquireLock();
+  await assertOwnedScratch();
+
+  // 端口检查放在删除/复制之前：端口被占时别白删一份副本
   await assertPortFree(PORT_LOCAL);
   await assertPortFree(PORT_LAN);
 
@@ -278,7 +420,7 @@ async function main() {
       () => false,
     ));
   if (reusable) {
-    console.log("[e2e] E2E_REUSE=1：复用上次副本与构建");
+    await resetData();
   } else {
     await prepare();
     await build();
@@ -316,10 +458,12 @@ async function main() {
   );
   children.push(lan);
 
-  for (const child of children) {
-    child.on("exit", (code) => {
-      if (code !== 0) console.error(`[e2e] 子进程退出：${code}`);
-    });
+  for (const [name, child] of [
+    ["本机", local],
+    ["局域网", lan],
+  ]) {
+    child.on("error", (error) => onChildExit(name, null, error.message));
+    child.on("exit", (code, signal) => onChildExit(name, code, signal));
   }
 
   await waitFor(`http://127.0.0.1:${PORT_LOCAL}/`, [200]);
