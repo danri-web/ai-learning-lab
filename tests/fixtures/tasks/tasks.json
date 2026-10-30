@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "task-transformer-attention",
+      "title": "学 Transformer Attention",
+      "status": "doing",
+      "dueDate": "2026-10-28",
+      "note": "先看论文，再看自己那篇笔记",
+      "articleIds": ["注意力机制"],
+      "resourceIds": ["attention-paper"],
+      "createdAt": "2026-10-25",
+      "updatedAt": "2026-10-29"
+    },
+    {
+      "id": "task-python-basics",
+      "title": "复习 Python 基础",
+      "status": "todo",
+      "dueDate": "2026-11-02",
+      "note": "",
+      "articleIds": [],
+      "resourceIds": [],
+      "createdAt": "2026-10-26",
+      "updatedAt": "2026-10-26"
+    },
+    {
+      "id": "task-rnn-notes",
+      "title": "写 RNN 笔记",
+      "status": "done",
+      "dueDate": "2026-10-20",
+      "note": "",
+      "articleIds": [],
+      "resourceIds": [],
+      "createdAt": "2026-10-18",
+      "updatedAt": "2026-10-21"
+    },
+    {
+      "id": "task-agent-survey",
+      "title": "读 Agent 综述",
+      "status": "todo",
+      "note": "没有期限，想起来就读",
+      "articleIds": [],
+      "resourceIds": [],
+      "createdAt": "2026-10-27",
+      "updatedAt": "2026-10-27"
+    }
+  ]
+}

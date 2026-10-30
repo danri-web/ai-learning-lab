@@ -54,8 +54,12 @@ const RULES: Rule[] = [
     // 页面（app/ 下）如果直接 import 写入模块，就等于跳过了 service 的字段校验，
     // 所以这里把"谁能 import 写入模块"钉死成唯一一个文件。
     name: "只有 service 能 import 写入模块（页面不许直接写文件）",
-    pattern: /from\s+["']@\/lib\/content\/(?:write|resources-store)["']/,
-    allow: ["features/articles/service.ts", "features/resources/service.ts"],
+    pattern: /from\s+["']@\/lib\/content\/(?:write|resources-store|tasks-store)["']/,
+    allow: [
+      "features/articles/service.ts",
+      "features/resources/service.ts",
+      "features/tasks/service.ts",
+    ],
   },
 ];
 
@@ -149,6 +153,14 @@ describe("源码闸门（功能未实现也先锁住）", () => {
         fixture: {
           path: "app/(workspace)/resources/page.tsx",
           text: 'import { createResource } from "@/lib/content/resources-store";',
+        },
+        target: "只有 service",
+      },
+      {
+        // 阶段 6 的任务写入模块同样不能被页面直接 import
+        fixture: {
+          path: "app/(workspace)/learning/page.tsx",
+          text: 'import { createTask } from "@/lib/content/tasks-store";',
         },
         target: "只有 service",
       },

@@ -2,7 +2,6 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { formatLocalDate, formatLocalStamp } from "@/lib/content/clock";
-import { slugifyTitle } from "@/lib/content/id";
 import { revisionOf } from "@/lib/content/revision";
 import {
   resourceFileSchema,
@@ -15,7 +14,7 @@ import {
 } from "@/lib/content/resources";
 import { writeFileAtomic } from "@/lib/fs/atomic-write";
 import { serialize } from "@/lib/fs/mutex";
-import { MAX_ID_LENGTH } from "@/lib/security/article-id";
+import { uniqueIdForTitle } from "@/lib/content/unique-id";
 
 /**
  * 资源收藏的**写**（阶段 4）。和笔记一样的三条规矩：
@@ -60,18 +59,6 @@ function fail(reason: StoreFailureReason, error: string): StoreFailure {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-/** 重名就加 `-2`（同笔记 D3）；超过 64 位先截断再试 */
-function nextFreeId(base: string, taken: Set<string>): string | null {
-  const room = MAX_ID_LENGTH - 4;
-  const stem = base.length > room ? base.slice(0, room).replace(/-+$/, "") : base;
-  for (let n = 1; n <= 100; n += 1) {
-    const candidate = n === 1 ? stem : `${stem}-${n}`;
-    if (candidate.length > MAX_ID_LENGTH) continue;
-    if (!taken.has(candidate.toLowerCase())) return candidate;
-  }
-  return null;
 }
 
 /** 写整个文件：先序列化，再用同一份 schema 读回来（写进去的必须读得回来） */
@@ -119,7 +106,7 @@ async function createResourceUnlocked(
     if (!Array.isArray(existing)) return existing;
 
     const taken = new Set(existing.map((item) => item.id.toLowerCase()));
-    const id = nextFreeId(slugifyTitle(input.title), taken);
+    const id = uniqueIdForTitle(input.title, taken);
     if (!id) return fail("invalid", "同名资源太多，换个标题再建");
 
     const record = {

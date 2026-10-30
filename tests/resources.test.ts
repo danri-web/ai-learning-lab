@@ -54,6 +54,18 @@ afterEach(async () => {
 });
 
 describe("新建", () => {
+  it("带 UTF-8 BOM 的 resources.json 也能读（手改文件时最常见的一种「坏」）", async () => {
+    const created = await createResource(input(), { root, now: NOW });
+    expect(created.ok).toBe(true);
+
+    const body = await fs.readFile(resourcesFile(root), "utf8");
+    await fs.writeFile(resourcesFile(root), `\uFEFF${body}`, "utf8");
+
+    const read = await readResources(root);
+    expect(read.problem).toBeNull();
+    expect(read.resources).toHaveLength(1);
+  });
+
   it("第一次新建会建出 resources.json（version 1），读回来内容一致", async () => {
     const created = await createResource(input(), { root, now: NOW });
     expect(created.ok).toBe(true);

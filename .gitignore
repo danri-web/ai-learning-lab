@@ -43,8 +43,9 @@ yarn-error.log*
 # ⚠️ 外部审计 v2 的 F2：这条规则之前只写在 ADR 里、没落到这个文件 —— 文档说"已保护"比"没保护"更危险。
 /content/articles/
 
-# 资源收藏与回收站（用户数据，同笔记：不进公开仓库）
+# 资源收藏 / 学习任务 / 回收站（用户数据，同笔记：不进公开仓库）
 /content/resources.json
+/content/tasks.json
 /content/.trash/
 
 # vercel

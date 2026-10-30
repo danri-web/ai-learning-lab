@@ -4,6 +4,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import { revisionOf } from "@/lib/content/revision";
+import { stripBom } from "@/lib/content/encoding";
 import {
   RESOURCE_SORT_LABELS,
   RESOURCE_TYPE_LABELS,
@@ -125,7 +126,7 @@ export async function readResources(root = contentRoot()): Promise<ResourceList>
   }
 
   try {
-    const parsed = resourceFileSchema.safeParse(JSON.parse(source));
+    const parsed = resourceFileSchema.safeParse(JSON.parse(stripBom(source)));
     if (!parsed.success) {
       const detail = parsed.error.issues
         .slice(0, 3)
