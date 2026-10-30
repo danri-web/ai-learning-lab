@@ -2,7 +2,7 @@
 
 一个本地优先的 AI 学习、知识管理与资源收藏工作台。
 
-**当前状态：阶段 1–8 开发完成（2026-10-30）；外部验收审计判定 NOT ACCEPTED（架构偏离 + SEC-01）。SEC-01/02/03 与 QA-01/02/03 已修；REQ-01 已按 A 正式变更（见 docs/需求变更-2026-10-30.md），DATA-01 待拍板。** 笔记能新建/编辑/删除（中文标题直接当文件名）；资源收藏能增删改、按类型/分类/标签筛选、三种排序，并能挂到某篇笔记上。链接只接受 http/https，应用**从不抓取**你填的地址。`Ctrl+K` 能搜全部笔记与资源：分组、摘要、高亮、`↑↓`/`Enter`/`Esc` 键盘操作，**不建索引**（每次搜都读文件，所以永远不会有"索引过期"）。学习任务有 Todo / 进行中 / 已完成三档、截止日期（会算逾期）、可关联多篇笔记与多条资源；总览页的数字全部从文件现算。阶段 7 把 `content/` 打成带清单的 zip（每个文件 sha256），恢复前先预览、先留快照、失败自动回滚；局域网默认关闭，打开后用口令登录，所有页面与写入都要过同一道门。阶段 8 补上了 Playwright 端到端测试（系统 Chrome；Windows 桌面 + Pixel 7 模拟）、axe 可访问性扫描（WCAG 2 A/AA，九个界面 0 命中）、性能基线、备份恢复的完整 E2E，以及 `app/error.tsx` 错误边界。**交付门槛是 `npm run verify`（480 条断言）加 `npm run test:e2e`。**
+**当前状态：阶段 1–8 开发完成（2026-10-30）；外部验收审计判定 NOT ACCEPTED（架构偏离 + SEC-01）。SEC-01/02/03、QA-01/02/03 与 DATA-01 都已修；REQ-01 已按 A 正式变更（见 docs/需求变更-2026-10-30.md）。** 笔记能新建/编辑/删除（中文标题直接当文件名）；资源收藏能增删改、按类型/分类/标签筛选、三种排序，并能挂到某篇笔记上。链接只接受 http/https，应用**从不抓取**你填的地址。`Ctrl+K` 能搜全部笔记与资源：分组、摘要、高亮、`↑↓`/`Enter`/`Esc` 键盘操作，**不建索引**（每次搜都读文件，所以永远不会有"索引过期"）。学习任务有 Todo / 进行中 / 已完成三档、截止日期（会算逾期）、可关联多篇笔记与多条资源；总览页的数字全部从文件现算。阶段 7 把 `content/` 打成带清单的 zip（每个文件 sha256），恢复前先预览、先留快照、失败自动回滚；阶段 8 之后又补了**恢复日志**：恢复写到一半被强杀，下次启动会自动回到恢复前（DATA-01）。局域网默认关闭，打开后用口令登录，所有页面与写入都要过同一道门。阶段 8 补上了 Playwright 端到端测试（系统 Chrome；Windows 桌面 + Pixel 7 模拟）、axe 可访问性扫描（WCAG 2 A/AA，九个界面 0 命中）、性能基线、备份恢复的完整 E2E，以及 `app/error.tsx` 错误边界。**交付门槛是 `npm run verify`（497 条断言）加 `npm run test:e2e`。**
 
 ![总览](docs/screenshot-dashboard.png)
 
@@ -144,7 +144,7 @@ npm run format:check # Prettier 只检查
 
 ## 测试与发布（阶段 8）
 
-交付门槛是两条命令：`npm run verify`（**480 条断言：479 通过 + 1 跳过**，跳过的是本机建不出的文件级符号链接）和 `npm run test:e2e`（Playwright）。端到端**不在 `verify` 里**：它要起服务、会改测试数据、单轮约 2.5 分钟，塞进每次提交会让人开始跳过闸门。
+交付门槛是两条命令：`npm run verify`（**497 条断言：496 通过 + 1 跳过**，跳过的是本机建不出的文件级符号链接）和 `npm run test:e2e`（Playwright）。端到端**不在 `verify` 里**：它要起服务、会改测试数据、单轮约 2.5 分钟，塞进每次提交会让人开始跳过闸门。
 
 ### 端到端测试怎么隔离数据
 
@@ -242,7 +242,7 @@ proxy.ts           每个请求的第一道门（局域网认证 / 本机绑定 
 scripts/           auth-lib / set-password / start-lan / env-file / e2e-server（隔离副本）
 e2e/               Playwright 用例、共享断言、fixtures（假笔记/资源/任务，不进 content/）
 playwright.config.ts  两个 project（Windows Chrome / Pixel 7）+ 自动起隔离服务
-tests/             Vitest 单元测试（480 条，其中 1 条在本机会 skipped）
+tests/             Vitest 单元测试（497 条，其中 1 条在本机会 skipped）
 docs/              需求书、架构决策、操作指南、截图
 backups/           备份 zip（gitignored；明文，别放公开同步盘）
 public/            静态资源
@@ -446,7 +446,7 @@ public/            静态资源
   `git clone（HEAD）→ npm ci（771 包，约 1 分钟）→ 放手机测试备份 zip → build → start →`
   `/backup 预览（新增 7 / 覆盖 0）→ 执行恢复 → 2 篇笔记 + 资源 + 任务都回来`；
   干净副本里再跑一遍 Vitest 也全过
-- **断言**：444 → **465**（464 通过 + 1 skipped）。新增 `tests/error-boundary.test.ts` 3 条、`tests/e2e-safety.test.ts` 13 条 + `tests/e2e-lock.test.ts` 5 条；E2E 单独一条命令，不进 `verify`。**2026-10-30 外部验收审计后又补了 15 条**（frontmatter 执行 5 + 登录体/限速 7 + TOC 3），当前 **480**（479 + 1 skipped）
+- **断言**：444 → **465**（464 通过 + 1 skipped）。新增 `tests/error-boundary.test.ts` 3 条、`tests/e2e-safety.test.ts` 13 条 + `tests/e2e-lock.test.ts` 5 条；E2E 单独一条命令，不进 `verify`。**2026-10-30 外部验收审计后又补了 32 条**（frontmatter 执行 5 + 登录体/限速 7 + TOC 3 + DATA-01 恢复日志 17），当前 **497**（496 + 1 skipped）
 - **实测踩到的坑**：① Turbopack 以最近的 lockfile 当工作区根，**不接受指向工作区外的 node_modules 目录联接**（`Could not find the Next.js package`）→ 改成 robocopy 真实复制；② React 19 在 form action 后 reset 表单，`<select>`/radio 的 value 没变时不会写回 DOM → 校验失败后控件看起来被清空（已修 + E2E 回归）；③ Next 的路由播报器也是 `role="alert"`，E2E 取 alert 必须收窄；④ 404 页的主文档本身会记一条 console error，不能和"脚本报错"混在一起断言；⑤ Pixel 7 设备档 + 系统 Chrome 要用 `channel: "chrome"`，否则会去找没下载的 Chromium
 
 ### 外部验收审计（GPT，2026-10-30）：High 为真，已修；架构偏离待拍板
@@ -461,12 +461,27 @@ public/            静态资源
 | **QA-01**：`~~~` 围栏里的 `##` 进了目录 | 真 | 围栏改为“字符 + 长度”状态机，支持 `~~~` 与长围栏 |
 | **QA-02**：站内跳转丢未保存修改 | 真 | `useUnsavedGuard`：`beforeunload` + 内部 `<a>` 点击拦截 |
 | **QA-03**：移动端没有目录 | 真 | 笔记详情窄屏加可折叠目录 |
-| **DATA-01**：恢复不是崩溃原子 | 真限制 | 未修：`pre-restore` 快照可手动回滚；没有 durable journal / 启动自动恢复 |
+| **DATA-01**：恢复不是崩溃原子 | 真限制 | **已修**：`backups/restore-journal.json`（`applying` / `verified`）+ 每进程首次访问 `/backup`、`/settings` 或执行恢复时自动收尾；坏日志 / 缺快照一律 fail closed；17 条测试（ADR **D17**）。仍不是目录级原子 |
 | **REQ-01**：SQLite/Drizzle/migrations/FTS5/Shiki/文件名 id 与最初需求书不符 | 真（对最初需求书） | **已按 A 正式变更**：`docs/需求变更-2026-10-30.md`；安全与功能验收不放宽 |
 | 测试 NOT TESTED | 审计方环境 `npm ci` EPERM | 不是应用失败；本项目实测 `verify` 480 条 + E2E 13/7 全绿。独立验收仍需能装依赖的机器 |
 
-> 旧验收包（`output/ai-lab-acceptance-2026-10-30`，源码 `ddf54bc`）包含 SEC-01，**不要继续分发**；
-> 架构决策与 DATA-01 定案后重打新包再送审。
+> 旧验收包（`output/ai-lab-acceptance-2026-10-30`，源码 `ddf54bc`）包含 SEC-01，**不要继续分发**。
+> 已重打 `output/ai-lab-acceptance-2026-10-30-v2`（含 SEC-01/02/03、QA-01/02/03、DATA-01 的修复；
+> 断言 497，E2E 13/7）。
+
+### DATA-01 修复：恢复日志 + 启动自动回滚（2026-10-30）
+
+- **日志**：`backups/restore-journal.json` —— 快照建好后先原子写 `phase: "applying"`，再动 `content/`；
+  重扫校验通过写 `verified` 再删；普通失败回滚成功才删；`PreflightError`（一个字节没写）直接删。
+- **启动恢复**：每进程第一次打开 `/backup`、`/settings` 或执行恢复时跑一次。`applying` → 回滚到快照；
+  `verified` → 只清日志。坏 JSON / 缺字段 / 未知版本 / 快照缺失 / 回滚失败一律 **fail closed**：
+  保留日志，错误里给快照名与「到 `/backup` 手动回滚」。
+- **测试**：`tests/restore-recovery.test.ts` **17 条**（含「日志必须先于正文落盘」「日志写失败不碰
+  content」「坏日志时拒绝开始新恢复」）；先看着红再修。
+- **真机验证**：在 `_scratch` 的 E2E 副本里种一份 `applying` 日志 + 混合 content，重启 `next start`
+  后打开 `/backup`，页面显示「上次恢复没有完成，已自动回到恢复前（快照 …）」，日志被删、多余文件进了
+  `.trash/restore-rollback-*`；再种一份缺快照的日志，页面显示「自动回滚也失败」+ 快照名，日志保留。
+- **仍然不是目录级原子**：日志只保证最终回到快照；两次 rename 之间被杀仍会短暂混合（ADR D17）。
 
 ## 已知问题（2026-10-30）
 
@@ -481,7 +496,7 @@ public/            静态资源
 | 备份是明文 zip、不自动清理 | `backups/` 会一直长；别放公开同步盘，需要时手动删旧备份 |
 | 恢复只从 `backups/` 列表选 | 从 U 盘/另一台机器恢复要先手动把 zip 放进 `backups/`（有意为之：不接受上传，攻击面最小） |
 | 跨进程并发写 | 进程内已串行（D8）；两个 `next dev` / 另跑 CLI 写同一目录仍是残余窗口 |
-| 恢复不是崩溃原子 | 逐文件 rename；普通失败会 catch 回滚，但进程/系统在两次 rename 之间被杀可能留下混合数据；`pre-restore` 快照可手动回滚，没有启动自动恢复（ADR D16、残留风险登记） |
+| 恢复不是目录级原子 | 已有 `backups/restore-journal.json` + 启动自动回滚（D17）：强杀后下次打开 `/backup`/`/settings` 会自己回到 `pre-restore` 快照；但逐文件 rename 仍不是目录级原子，两次 rename 之间被杀会短暂混合 |
 | E2E 的边界 | 写入流程只在 Windows project 跑，Pixel 7 只做冒烟；不做截图对比、Lighthouse、Firefox/Safari；不进 CI（本地单机项目） |
 | E2E 复用只用于调试 | `E2E_REUSE=1` 不重建，源码改动后构建可能落后；只重置夹具，不作为验收结果 |
 | E2E 副本复制是排除名单 | 未跟踪的 `*.pem`、`.npmrc` 等可能进临时副本；只在本机临时目录、不上传 |

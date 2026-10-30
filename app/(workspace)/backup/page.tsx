@@ -105,6 +105,29 @@ export default async function BackupPage({ searchParams }: { searchParams: Promi
         }
       />
 
+      {overview.recovery ? (
+        <Notice tone={overview.recovery.tone}>
+          <p className="flex items-start gap-2 font-medium">
+            {overview.recovery.tone === "ok" ? (
+              <ShieldCheck aria-hidden className="mt-0.5 size-4 shrink-0 text-success" />
+            ) : (
+              <TriangleAlert
+                aria-hidden
+                className={`mt-0.5 size-4 shrink-0 ${
+                  overview.recovery.tone === "warn" ? "text-warning" : "text-danger"
+                }`}
+              />
+            )}
+            <span className="break-words">{overview.recovery.message}</span>
+          </p>
+          {overview.recovery.detail ? (
+            <p className="mt-1 text-xs break-words text-muted-foreground">
+              {overview.recovery.detail}
+            </p>
+          ) : null}
+        </Notice>
+      ) : null}
+
       {params.created ? (
         <Notice tone="ok">
           <p className="flex items-center gap-2 font-medium">
@@ -195,7 +218,10 @@ export default async function BackupPage({ searchParams }: { searchParams: Promi
           </p>
           <p>
             每次恢复前都会先建一份 <code>pre-restore-*.zip</code>{" "}
-            快照并回读校验；写到一半失败会自动回滚。 备份是明文 zip，别放公开同步盘。
+            快照并回读校验；写到一半失败会自动回滚。恢复开始前还会在 <code>backups/</code> 写一份
+            <code>restore-journal.json</code>
+            ：如果进程被强杀，下次打开这一页会自动回到恢复前的快照。 备份是明文
+            zip，别放公开同步盘。
           </p>
         </div>
       </details>

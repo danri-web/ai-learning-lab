@@ -20,6 +20,13 @@ import {
 } from "@/lib/content/backup-store";
 import { checkBackupPayload } from "@/lib/content/backup-validate";
 import { formatLocalStamp } from "@/lib/content/clock";
+import {
+  RESTORE_JOURNAL_VERSION,
+  clearRestoreJournal,
+  readRestoreJournal,
+  writeRestoreJournal,
+  type RestoreJournal,
+} from "@/lib/content/restore-journal";
 import { writeFileAtomic } from "@/lib/fs/atomic-write";
 import { serialize } from "@/lib/fs/mutex";
 import { contentPathForEntry } from "@/lib/security/backup-entry";
@@ -64,6 +71,16 @@ export type RestoreSuccess = {
   warnings: string[];
   manifest: BackupManifest;
 };
+
+/**
+ * 上一次恢复留下的日志（DATA-01）。启动时/下一次恢复前用它决定：
+ * 自动回滚、只清日志，还是 fail closed。
+ */
+export type RestoreRecovery =
+  | { state: "none" }
+  | { state: "recovered"; snapshot: string }
+  | { state: "already-complete"; snapshot: string }
+  | { state: "failed"; snapshot: string | null; error: string };
 
 class PreflightError extends Error {
   constructor(message: string) {
@@ -224,6 +241,69 @@ async function rollbackToSnapshot(options: {
   return verified.ok ? { ok: true } : { ok: false, error: verified.error };
 }
 
+/**
+ * 启动恢复（DATA-01）：读 `backups/restore-journal.json`，判断上次恢复有没有收尾。
+ *
+ * 规则（任务卡 §2.3）：
+ *   - `applying`  → 用日志里的 snapshot 回滚；成功后删日志
+ *   - `verified`  → 上次其实已成功，只删日志，不动数据
+ *   - 读不出 / 快照缺失 / 回滚失败 → 保留日志，fail closed，错误里给快照名与手动入口
+ *
+ * 调用方必须已经持有 `serialize` 锁（applyRestore 内部，或公开入口 recoverPendingRestore）。
+ */
+async function recoverPendingRestoreUnlocked(options: {
+  contentRoot?: string;
+  backupsDir?: string;
+  now?: Date;
+}): Promise<RestoreRecovery> {
+  const now = options.now ?? new Date();
+  const root = options.contentRoot ?? contentFilesRoot();
+  const backupsDir = options.backupsDir ?? backupsRoot();
+
+  const read = await readRestoreJournal(backupsDir);
+  if (!read.ok) {
+    return {
+      state: "failed",
+      snapshot: null,
+      error: `${read.error}；已保留该文件，不猜、不修、不删。先确认它写的是什么，再决定手动处理。`,
+    };
+  }
+
+  const journal = read.journal;
+  if (!journal) return { state: "none" };
+
+  if (journal.phase === "verified") {
+    const cleared = await clearRestoreJournal(backupsDir);
+    if (!cleared.ok) {
+      return {
+        state: "failed",
+        snapshot: journal.snapshot,
+        error: `上次恢复已经完成并通过校验，但恢复日志删不掉（${cleared.error}）；数据没有被改动，下次启动会再试。`,
+      };
+    }
+    return { state: "already-complete", snapshot: journal.snapshot };
+  }
+
+  const rolledBack = await rollbackToSnapshot({
+    root,
+    backupsDir,
+    snapshotName: journal.snapshot,
+    now,
+  });
+  if (!rolledBack.ok) {
+    return {
+      state: "failed",
+      snapshot: journal.snapshot,
+      error: `上次恢复没有完成，自动回滚也失败（${rolledBack.error}）。快照 ${journal.snapshot} 还在 backups/，请在 /backup 列表里对它点「回滚」。`,
+    };
+  }
+
+  // 数据已经回到快照。日志删不掉时不再额外报错：下次启动会对同一快照再核对一次（幂等），
+  // 但每次都会再尝试删除日志。
+  await clearRestoreJournal(backupsDir);
+  return { state: "recovered", snapshot: journal.snapshot };
+}
+
 async function applyRestoreUnlocked(options: {
   contentRoot?: string;
   backupsDir?: string;
@@ -242,6 +322,24 @@ async function applyRestoreUnlocked(options: {
       ok: false,
       reason: "confirm",
       error: `请输入「${RESTORE_CONFIRM_TEXT}」两个字再确认（防止手滑）`,
+    };
+  }
+
+  // 第 0 步：先把上一次没收尾的恢复处理掉。content/ 可能停在混合状态，
+  // 这时继续按旧的 planHash 往下写只会更乱（DATA-01）。
+  const pending = await recoverPendingRestoreUnlocked({ contentRoot: root, backupsDir, now });
+  if (pending.state === "failed") {
+    return {
+      ok: false,
+      reason: "io",
+      error: `上一次恢复还没有收尾，先处理它才能再恢复：${pending.error}`,
+    };
+  }
+  if (pending.state === "recovered") {
+    return {
+      ok: false,
+      reason: "stale",
+      error: "检测到上次恢复没有完成，已先自动回滚到恢复前；content/ 已经变了，请重新预览再确认。",
     };
   }
 
@@ -297,6 +395,23 @@ async function applyRestoreUnlocked(options: {
     };
   }
 
+  // 第 3.5 步：留下「我正在改 content/」的耐久证据。日志写不下去就绝不往下走。
+  const journal: RestoreJournal = {
+    version: RESTORE_JOURNAL_VERSION,
+    snapshot: snapshot.name,
+    planHash: plan.planHash,
+    startedAt: now.toISOString(),
+    phase: "applying",
+  };
+  const journalWritten = await writeRestoreJournal(backupsDir, journal);
+  if (!journalWritten.ok) {
+    return {
+      ok: false,
+      reason: "io",
+      error: `无法写恢复日志，已取消恢复（content/ 没有改动）：${journalWritten.error}`,
+    };
+  }
+
   try {
     const applied = await applyPlan({
       root,
@@ -316,17 +431,32 @@ async function applyRestoreUnlocked(options: {
       }
     }
 
+    // 校验通过才把日志标成 verified，再删。顺序反了会在「成功但没删掉」时
+    // 让下次启动误以为没写完、把一次成功的恢复回滚掉。
+    const marked = await writeRestoreJournal(backupsDir, { ...journal, phase: "verified" });
+    const cleared = await clearRestoreJournal(backupsDir);
+    const journalWarnings: string[] = [];
+    if (!cleared.ok) {
+      journalWarnings.push(
+        marked.ok
+          ? `恢复日志没能删除（${cleared.error}）；下次启动只会清掉它，不会再动数据。`
+          : `恢复日志既没能标记完成、也没能删除（${cleared.error}）；下次启动可能会把这次恢复回滚掉。`,
+      );
+    }
+
     return {
       ok: true,
       snapshotName: snapshot.name,
       snapshotPath: snapshot.path,
       deletedTo: applied.deletedTo,
       plan,
-      warnings: payload.warnings,
+      warnings: [...payload.warnings, ...journalWarnings],
       manifest: loaded.backup.manifest,
     };
   } catch (error) {
     if (error instanceof PreflightError) {
+      // 一个文件都没写：日志没有继续存在的理由
+      await clearRestoreJournal(backupsDir);
       return {
         ok: false,
         reason: "io",
@@ -344,13 +474,16 @@ async function applyRestoreUnlocked(options: {
       return {
         ok: false,
         reason: "io",
-        error: `恢复失败（${message(error)}）；自动回滚也失败（${rolledBack.error}）。恢复前快照：${snapshot.name}，请手动恢复。`,
+        error: `恢复失败（${message(error)}）；自动回滚也失败（${rolledBack.error}）。恢复前快照：${snapshot.name}，请手动恢复；恢复日志已保留，下次启动会再试一次自动回滚。`,
       };
     }
+    const cleared = await clearRestoreJournal(backupsDir);
     return {
       ok: false,
       reason: "io",
-      error: `恢复失败（${message(error)}），已自动回滚到恢复前状态（快照 ${snapshot.name}）。`,
+      error: `恢复失败（${message(error)}），已自动回滚到恢复前状态（快照 ${snapshot.name}）。${
+        cleared.ok ? "" : "（恢复日志没能删除，下次启动会再核对一次）"
+      }`,
     };
   }
 }
@@ -366,6 +499,20 @@ export function applyRestore(options: {
   now?: Date;
 }): Promise<RestoreSuccess | RestoreFailure> {
   return serialize(() => applyRestoreUnlocked(options));
+}
+
+/**
+ * 启动恢复的公开入口（DATA-01）：与恢复共用同一把 `serialize` 锁。
+ * 不要在拿锁的代码里调用它（会死等自己）；`applyRestore` 内部走的是 unlocked 版本。
+ */
+export function recoverPendingRestore(
+  options: {
+    contentRoot?: string;
+    backupsDir?: string;
+    now?: Date;
+  } = {},
+): Promise<RestoreRecovery> {
+  return serialize(() => recoverPendingRestoreUnlocked(options));
 }
 
 /** 给界面显示的统计（失败时也能拿到计划） */
