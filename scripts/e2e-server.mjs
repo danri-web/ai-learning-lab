@@ -22,13 +22,13 @@
  *   E2E_SCRATCH=<仓库外的目录> node scripts/e2e-server.mjs
  */
 import { spawn, spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
 import { generateSecret, hashPassword } from "./auth-lib.mjs";
+import { LockError, acquireScratchLock } from "./e2e-lock.mjs";
 
 const REPO = process.cwd();
 const SCRATCH = path.resolve(
@@ -72,32 +72,16 @@ const SKIP_DIRS = new Set([
   "coverage",
 ]);
 
-let lockHeld = false;
-let reclaimHeld = false;
+let lockHandle = null;
 
 function releaseLockSync() {
-  if (!lockHeld) return;
-  lockHeld = false;
-  try {
-    rmSync(LOCK, { force: true });
-  } catch {
-    // 正在退出，尽力而为；残留锁由下一次启动安全回收
-  }
-}
-
-function releaseReclaimSync() {
-  if (!reclaimHeld) return;
-  reclaimHeld = false;
-  try {
-    rmSync(RECLAIM, { force: true });
-  } catch {
-    // 同上
-  }
+  if (!lockHandle) return;
+  lockHandle.releaseSync();
+  lockHandle = null;
 }
 
 function fail(message) {
   releaseLockSync();
-  releaseReclaimSync();
   console.error(`\n✗ E2E 服务器：${message}\n`);
   process.exit(1);
 }
@@ -192,102 +176,20 @@ async function assertPhysicalScratch() {
   }
 }
 
-function isProcessAlive(pid) {
-  try {
-    process.kill(pid, 0); // 只探活，不发信号
-    return true;
-  } catch (error) {
-    return error.code === "EPERM"; // 活着但没权限
-  }
-}
-
-/** `wx` 原子创建主锁；失败抛错给调用者判断 */
-async function createLock() {
-  const handle = await fs.open(LOCK, "wx");
-  try {
-    await handle.writeFile(String(process.pid), "utf8");
-  } finally {
-    await handle.close();
-  }
-  lockHeld = true;
-}
-
 /**
  * 同一份 scratch 同时只允许一个 E2E 进程（审计 v5 F3）。
- *
- * - 主锁用 `wx` 原子创建；已存在时先看 PID。
- * - 活 PID → 直接拒绝；空锁 / 读不出的锁 → fail closed（可能是别人刚建还没写完）。
- * - 死 PID → 自动回收，但必须持有**回收守卫**（`wx`）：
- *   两个进程都判旧锁已死时，只有一个能进回收区；另一个 fail closed。
- *   回收前会重读锁并再判活，防止把刚被替换的活锁删掉（审计 v6 P2）。
- * - 进程被强杀留下的主锁，由下一次启动安全回收；回收守卫本身残留则要人工清理。
+ * 协议在 scripts/e2e-lock.mjs —— 抽成模块才能做「两个回收者」的确定性并发测试。
  */
 async function acquireLock() {
-  await fs.mkdir(SCRATCH, { recursive: true });
-
   try {
-    await createLock();
-    return;
+    lockHandle = await acquireScratchLock({
+      lockPath: LOCK,
+      reclaimPath: RECLAIM,
+      log: (message) => console.log(message),
+    });
   } catch (error) {
-    if (error.code !== "EEXIST") fail(`拿不到副本锁：${LOCK}（${error.code ?? error.message}）`);
-  }
-
-  const raw = await fs.readFile(LOCK, "utf8").catch(() => "");
-  const pid = Number(raw.trim());
-  if (!Number.isInteger(pid) || pid <= 0) {
-    fail(
-      `副本已被占用（锁 ${LOCK}，PID 未知或为空）。\n` +
-        `空锁可能是另一个 E2E 刚建还没写完：不会自动处理，确认没有其他 E2E 后手动删除锁文件。`,
-    );
-  }
-  if (isProcessAlive(pid)) {
-    fail(
-      `另一个 E2E 正在使用同一份副本（pid ${pid}）：${SCRATCH}\n` +
-        `等它结束，或换一个 E2E_SCRATCH。`,
-    );
-  }
-
-  // 旧锁的 PID 已死：用回收守卫把「删旧 → 建新」串行化
-  try {
-    const handle = await fs.open(RECLAIM, "wx");
-    try {
-      await handle.writeFile(String(process.pid), "utf8");
-    } finally {
-      await handle.close();
-    }
-    reclaimHeld = true;
-  } catch (error) {
-    if (error.code === "EEXIST") {
-      fail(
-        `另一个 E2E 正在回收旧锁或启动中（守卫 ${RECLAIM} 存在）。\n` +
-          `确认没有其他 E2E 后，手动删除它和 ${LOCK}。`,
-      );
-    }
-    fail(`拿不到回收守卫：${RECLAIM}（${error.code ?? error.message}）`);
-  }
-
-  try {
-    // 拿到守卫后重读：如果锁已被别人替换成活锁，放弃，绝不删
-    const againRaw = await fs.readFile(LOCK, "utf8").catch(() => "");
-    const againPid = Number(againRaw.trim());
-    if (againPid !== pid || isProcessAlive(againPid)) {
-      fail(
-        `旧锁在回收期间被替换（${raw.trim() || "空"} → ${againRaw.trim() || "空"}），` +
-          `放弃回收，避免删掉活锁。`,
-      );
-    }
-    await fs.rm(LOCK, { force: true });
-    try {
-      await createLock();
-      console.log(`[e2e] 旧锁已回收（pid ${pid} 已退出）`);
-    } catch (error) {
-      fail(`回收旧锁时被另一个进程抢先：${error.code ?? error.message}`);
-    }
-  } finally {
-    if (reclaimHeld) {
-      reclaimHeld = false;
-      await fs.rm(RECLAIM, { force: true }).catch(() => {});
-    }
+    if (error instanceof LockError) fail(error.message);
+    throw error;
   }
 }
 
@@ -485,7 +387,6 @@ function cleanup() {
   shuttingDown = true;
   for (const child of children) killTree(child.pid);
   releaseLockSync();
-  releaseReclaimSync();
 }
 
 /** 子进程意外退出时让 supervisor 也失败，不要留下「半个服务」继续跑 */
