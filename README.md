@@ -159,7 +159,7 @@ lib/security/      文章 id 规则、路径闸门、资源 URL 白名单、会�
 lib/fs/            原子写入（临时文件 + fsync + rename）、进程内写锁
 proxy.ts           每个请求的第一道门（局域网认证 / 本机绑定 fail closed）
 scripts/           auth-lib / set-password / start-lan / env-file
-tests/             Vitest 单元测试（443 条，其中 1 条在本机会 skipped）
+tests/             Vitest 单元测试（444 条，其中 1 条在本机会 skipped）
 docs/              需求书、架构决策、截图
 backups/           备份 zip（gitignored；明文，别放公开同步盘）
 public/            静态资源
@@ -324,7 +324,7 @@ public/            静态资源
 
 **断言与实测**
 
-- 断言 234 → **443 条**（442 通过 + 1 条文件级 symlink skipped）：备份条目 46、manifest/diff 23、备份读写 16、恢复 9、回滚故障注入 3、删除恢复 4、会话 16、口令 13、访问配置 42、登录限速 5、proxy 12、覆盖关系 7、脚本兼容 5，以及启动/源码闸门的增量
+- 断言 234 → **444 条**（443 通过 + 1 条文件级 symlink skipped）：备份条目 46、manifest/diff 23、备份读写 16、恢复 9、回滚故障注入 3、删除恢复 4、会话 16、口令 13、访问配置 42、登录限速 5、登录路由 1、proxy 12、覆盖关系 7、脚本兼容 5，以及启动/源码闸门的增量
 - 真浏览器点过：建备份（6 个文件 / 3.4 KB，自检通过）→ 改一篇临时笔记 → 预览「覆盖 1」→ 确认恢复（自动生成 `pre-restore` 快照）→ 对快照点「回滚」→ 内容回到改前 → 删除临时笔记与测试备份
 - 真机网络：默认 `127.0.0.1` 从局域网 IP `connection refused`；`start:lan` 未登录请求 → 307 到 `/login`、action POST → 401、body 里 0 处笔记标题；用 curl 在局域网 IP 登录后拿到 200 与笔记内容；登出后同一 cookie 再请求回到 307
 - 构建 0 警告（Turbopack 对运行时路径的 tracing 警告用 `/*turbopackIgnore*/` 消掉）
@@ -344,7 +344,7 @@ public/            静态资源
 | --- | --- | --- | --- | --- |
 | F1 | 恢复先写文章、再检查删除目的地；检查失败时外层把 `PreflightError` 当成「一个文件都没写」跳过回滚 | 固定时间戳 + 在 `content/.trash/restore-<stamp>` 放一个普通文件：文章已写入，错误却说「没有改动」 | 删除目的地也在写第一个字节前预检（`restore-store.ts`） | 「说没有改动就必须字节不变」 |
 | F2 | 资源/任务先删活动 JSON、再追加 `.trash`；第二步失败时记录已经没了 | 把 `.trash` 做成普通文件：删除返回失败，但 `resources.json` / `tasks.json` 已空 | 先写 `.trash`，再写活动 JSON；活动写失败时撤回刚追加的行 | 4 条：两个 store ×（trash 写失败 / 活动写失败） |
-| F3 | 登录限速按 `X-Forwarded-For` 分桶，换头可绕过 5 次锁 | 源码：`clientKey` 读客户端可改的转发头 | 全局桶，不读转发头；代价是攻击者可故意失败锁住房主 5 分钟（D13） | 桶 key 固定为 `owner` |
+| F3 | 登录限速按 `X-Forwarded-For` 分桶，换头可绕过 5 次锁 | 源码：`clientKey` 读客户端可改的转发头 | 全局桶，不读转发头；代价是攻击者可故意失败锁住房主 5 分钟（D13） | 路由级：5 次不同 XFF 第 6 次被锁，且不再验口令 |
 
-> 断言 437 → **443**；`npm run verify` 全绿。F3 的回归是单元级（key 不再来自请求头），
+> 断言 437 → **444**；`npm run verify` 全绿。F3 的回归是路由级（POST 5 次不同 XFF，第 6 次被锁且不再验口令），
 > 真机 LAN 发请求放到阶段 8 的 E2E 里补。

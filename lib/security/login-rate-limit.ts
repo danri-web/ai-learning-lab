@@ -70,6 +70,11 @@ export class LoginRateLimiter {
     this.entries.delete(key);
   }
 
+  /** 测试/热重载用：清空所有桶（生产路径不调用） */
+  reset(): void {
+    this.entries.clear();
+  }
+
   /** 只清理明显过期的条目，避免长期运行后 Map 无限增长 */
   private prune(): void {
     const now = this.now();
