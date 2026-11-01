@@ -2,7 +2,7 @@
 
 一个本地优先的 AI 学习、知识管理与资源收藏工作台。
 
-**状态：阶段 1–8 全部完成（2026-10-30），外部验收审计最终 ACCEPT。** 交付门槛是 `npm run verify`（**569 条断言：568 通过 + 1 跳过**）加 `npm run test:e2e`（**15 实跑 + 9 按设计跳过**）。审计过程（v1/v2 NOT ACCEPTED → 逐条复现修复 → 四轮复核 → v3e ACCEPT）见文末「审计与复核记录」。
+**状态：阶段 1–8 全部完成（2026-10-30），外部验收审计最终 ACCEPT。** 交付门槛是 `npm run verify`（**571 条断言：570 通过 + 1 跳过**）加 `npm run test:e2e`（**15 实跑 + 9 按设计跳过**）。审计过程（v1/v2 NOT ACCEPTED → 逐条复现修复 → 四轮复核 → v3e ACCEPT）见文末「审计与复核记录」。
 
 - **笔记**：`content/articles/*.md` 就是数据库，没有索引也没有隐藏状态；中文标题直接当文件名；编辑器支持 GFM、公式与代码高亮，正文里的 HTML **不执行**
 - **搜索**：`Ctrl+K` 搜全部笔记与资源，分组 + 摘要 + 高亮 + 键盘操作，**不建索引**（每次搜都读文件，所以永远不会有「索引过期」）
@@ -40,6 +40,7 @@
 > 已批准的架构变更见 **[docs/需求变更-2026-10-30.md](docs/需求变更-2026-10-30.md)**（文件为真相、无 SQLite/FTS5/Shiki；安全要求不放宽）。
 >
 > 日常操作看两份短指南：**[管理员操作指南](docs/管理员操作指南.md)**（安装/启动/备份/恢复/手机访问）· **[用户操作指南](docs/用户操作指南.md)**（写笔记/搜索/资源/任务）。
+> 要当面演示或录屏，照着 **[演示脚本](docs/演示脚本.md)** 走（3 分钟分镜 + 常见翻车点）。
 
 ## 写笔记（两种方式都行）
 
@@ -86,10 +87,15 @@ updatedAt: "2026-10-27"
 git clone https://github.com/danri-web/ai-learning-lab.git
 cd ai-learning-lab
 npm install
+npm run seed:demo   # 可选：铺 3 篇笔记 + 2 条资源 + 2 个任务（没有它打开是空的）
 npm run dev
 ```
 
 打开 <http://127.0.0.1:3000>。
+
+> `content/` 不在仓库里（D5：笔记属于私有仓库），所以新 clone 是空的 —— 这是预期，不是坏了。
+> `npm run seed:demo` 只在 `content/` 还没有数据时工作，已有数据它会拒绝、一个字节都不写。
+> 演示顺序与现场话术见 **[docs/演示脚本.md](docs/演示脚本.md)**。
 
 ### 手机 / 局域网（可选，默认关闭）
 
@@ -137,6 +143,7 @@ npm run build        # 生产构建
 npm run start        # 运行生产构建（127.0.0.1:3000）
 npm run start:lan    # 局域网模式（生产构建 + 强制口令；先 build）
 npm run auth:set-password # 设置/重置局域网口令（写 scrypt 哈希到 .env.local）
+npm run seed:demo    # 把 demo/content/ 铺进 content/（已有数据会拒绝）
 npm run lint         # ESLint 9
 npm run typecheck    # next typegen && tsc --noEmit
 npm run test         # Vitest（单元 / 集成 / 源码闸门）
@@ -152,9 +159,9 @@ npm run format:check # Prettier 只检查
 
 ## 测试与发布（阶段 8）
 
-交付门槛是两条命令：`npm run verify`（**569 条断言：568 通过 + 1 跳过**，跳过的是本机建不出的文件级符号链接）和 `npm run test:e2e`（Playwright，**15 实跑 + 9 按设计跳过**）。端到端**不在 `verify` 里**：它要起服务、会改测试数据、单轮约 2.5 分钟，塞进每次提交会让人开始跳过闸门。
+交付门槛是两条命令：`npm run verify`（**571 条断言：570 通过 + 1 跳过**，跳过的是本机建不出的文件级符号链接）和 `npm run test:e2e`（Playwright，**15 实跑 + 9 按设计跳过**）。端到端**不在 `verify` 里**：它要起服务、会改测试数据、单轮约 2.5 分钟，塞进每次提交会让人开始跳过闸门。
 
-另有一条**外部复核用的只读探针**（不属于交付门槛，也不计入 569）：`npm run audit:probes`。33 个探针样例 + 6 个命名回归套件（7 个文件、57 条），覆盖 frontmatter 的 Unicode 空白/重复 BOM/无换行、读/保存/恢复预览三个入口、写入闸门、查询失败、放弃排队、恢复状态机与缓存边界；输出一页 `PASS/FAIL`，只读、不联网、跑完自动清临时目录。详见 [`scripts/audit/README.md`](scripts/audit/README.md)。
+另有一条**外部复核用的只读探针**（不属于交付门槛，也不计入 571）：`npm run audit:probes`。33 个探针样例 + 6 个命名回归套件（7 个文件、57 条），覆盖 frontmatter 的 Unicode 空白/重复 BOM/无换行、读/保存/恢复预览三个入口、写入闸门、查询失败、放弃排队、恢复状态机与缓存边界；输出一页 `PASS/FAIL`，只读、不联网、跑完自动清临时目录。详见 [`scripts/audit/README.md`](scripts/audit/README.md)。
 
 ### 端到端测试怎么隔离数据
 
@@ -250,10 +257,11 @@ lib/security/      文章 id 规则、路径闸门、资源 URL 白名单、会�
                    访问配置（auth-config）、登录限速、备份条目闸门（backup-entry）
 lib/fs/            原子写入（临时文件 + fsync + rename）、进程内写锁
 proxy.ts           每个请求的第一道门（局域网认证 / 本机绑定 fail closed）
-scripts/           auth-lib / set-password / start-lan / env-file / e2e-server（隔离副本）
+scripts/           auth-lib / set-password / start-lan / env-file / e2e-server（隔离副本）/ seed-demo
+demo/              演示数据（3 篇笔记 + 资源 + 任务），供 `npm run seed:demo` 铺进 content/
 e2e/               Playwright 用例、共享断言、fixtures（假笔记/资源/任务，不进 content/）
 playwright.config.ts  两个 project（Windows Chrome / Pixel 7）+ 自动起隔离服务
-tests/             Vitest 单元测试（569 条，其中 1 条在本机会 skipped）
+tests/             Vitest 单元测试（571 条，其中 1 条在本机会 skipped）
 docs/              需求书、架构决策、操作指南、截图
 backups/           备份 zip（gitignored；明文，别放公开同步盘）
 public/            静态资源

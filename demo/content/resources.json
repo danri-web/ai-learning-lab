@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "resources": [
+    {
+      "id": "Attention-Is-All-You-Need",
+      "title": "Attention Is All You Need",
+      "url": "https://arxiv.org/abs/1706.03762",
+      "type": "paper",
+      "category": "Deep Learning",
+      "tags": ["Transformer", "Attention", "论文"],
+      "description": "Transformer 的原始论文（NeurIPS 2017）",
+      "articleId": "Transformer-的注意力机制-上",
+      "createdAt": "2026-10-30",
+      "updatedAt": "2026-10-30"
+    },
+    {
+      "id": "huggingface-transformers",
+      "title": "huggingface/transformers",
+      "url": "https://github.com/huggingface/transformers",
+      "type": "repo",
+      "category": "Deep Learning",
+      "tags": ["Transformer", "开源"],
+      "description": "各种预训练模型的开源实现，查 API 和源码都从这里进",
+      "createdAt": "2026-10-30",
+      "updatedAt": "2026-10-30"
+    }
+  ]
+}

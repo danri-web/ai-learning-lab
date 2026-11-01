@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "学-Transformer-Attention",
+      "title": "学 Transformer Attention",
+      "status": "doing",
+      "dueDate": "2026-11-02",
+      "note": "先看论文第 3 节，再对照自己那篇笔记",
+      "articleIds": ["Transformer-的注意力机制-上"],
+      "resourceIds": ["Attention-Is-All-You-Need"],
+      "createdAt": "2026-10-30",
+      "updatedAt": "2026-10-30"
+    },
+    {
+      "id": "整理-Prompt-原则",
+      "title": "整理 Prompt 三条原则",
+      "status": "todo",
+      "dueDate": "2026-11-05",
+      "note": "把笔记里的表格补成能直接抄的模板",
+      "articleIds": ["Prompt-工程-三条最小原则"],
+      "resourceIds": [],
+      "createdAt": "2026-10-30",
+      "updatedAt": "2026-10-30"
+    }
+  ]
+}

@@ -8,6 +8,7 @@
     "start": "next start -H 127.0.0.1",
     "start:lan": "node scripts/start-lan.mjs",
     "auth:set-password": "node scripts/set-password.mjs",
+    "seed:demo": "node scripts/seed-demo.mjs",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
