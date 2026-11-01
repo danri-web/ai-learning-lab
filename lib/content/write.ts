@@ -156,8 +156,10 @@ async function createArticleUnlocked(
     await fs.mkdir(root, { recursive: true });
     const taken = await listTakenIds(root);
 
+    // 兜底 id 用注入的 now 算日期：标题全是符号时，文件名里的日期必须与 createdAt 一致
+    // （slugifyTitle 内部默认用真实时钟，这里显式传进去，测试才可复现）
     const id =
-      nextFreeId(slugifyTitle(input.title), taken) ??
+      nextFreeId(slugifyTitle(input.title, { fallback: fallbackNoteId(now) }), taken) ??
       nextFreeId(fallbackNoteId(now), taken) ??
       null;
     if (!id) return fail("conflict", "同名笔记太多，换个标题再建");
