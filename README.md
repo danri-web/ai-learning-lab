@@ -95,6 +95,8 @@ npm run dev
 
 打开 <http://127.0.0.1:3000>。
 
+> **Windows 用户**：也可以直接双击仓库根目录的 `start-lab.cmd`（没在跑就用生产构建启动并打开浏览器，改过代码会先自动 build），`stop-lab.cmd` 停止。日常用它比 `npm run dev` 快。
+>
 > `content/` 不在仓库里（D5：笔记属于私有仓库），所以新 clone 是空的 —— 这是预期，不是坏了。
 > `npm run seed:demo` 只在 `content/` 还没有数据时工作，已有数据它会拒绝、一个字节都不写。
 > 演示顺序与现场话术见 **[docs/演示脚本.md](docs/演示脚本.md)**。
