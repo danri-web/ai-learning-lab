@@ -2,6 +2,8 @@
 
 一个本地优先的 AI 学习、知识管理与资源收藏工作台。
 
+**v1.0.0**（2026-11-01）· [发行说明](https://github.com/danri-web/ai-learning-lab/releases/tag/v1.0.0)
+
 **状态：阶段 1–8 全部完成（2026-10-30），外部验收审计最终 ACCEPT。** 交付门槛是 `npm run verify`（**571 条断言：570 通过 + 1 跳过**）加 `npm run test:e2e`（**15 实跑 + 9 按设计跳过**）。审计过程（v1/v2 NOT ACCEPTED → 逐条复现修复 → 四轮复核 → v3e ACCEPT）见文末「审计与复核记录」。
 
 - **笔记**：`content/articles/*.md` 就是数据库，没有索引也没有隐藏状态；中文标题直接当文件名；编辑器支持 GFM、公式与代码高亮，正文里的 HTML **不执行**

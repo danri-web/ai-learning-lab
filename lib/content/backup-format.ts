@@ -38,7 +38,7 @@ export const MANIFEST_NAME = "manifest.json";
 export const RESTORE_CONFIRM_TEXT = "恢复";
 
 /** 与 package.json 的 version 对齐（有测试钉住；改版本时两处一起改） */
-export const APP_VERSION = "0.1.0";
+export const APP_VERSION = "1.0.0";
 
 /** 单个备份文件名上限（远小于文件系统限制，也够放下时间戳与冲突后缀） */
 export const MAX_BACKUP_NAME_LENGTH = 80;
