@@ -492,7 +492,7 @@ public/            静态资源
 > ① `---javascript\u00a0` 这类 Unicode 空白绕过 frontmatter 守卫，payload 在真实的
 > `parseArticle` / `readFrontmatter` / `checkBackupPayload` 里执行（High）；
 > ② 延迟恢复会覆盖重启后先做的编辑（Medium）。两条都已按复现修完，见下方「v2 审计修复」与 ADR **D18**。
-> 新验收包 `output/ai-lab-acceptance-2026-10-30-v3e`（含 `npm run audit:probes` 的 33/33 + 7 文件 57 条日志）；旧包 `ddf54bc`（含 SEC-01）与 v2 包（含空白绕过）、v3/v3b/v3c/v3d 都被 v3e 取代
+> 新验收包 `output/06-AI-Lab/ai-lab-acceptance-2026-10-30-v3e`（含 `npm run audit:probes` 的 33/33 + 7 文件 57 条日志）；旧包 `ddf54bc`（含 SEC-01）与 v2 包（含空白绕过）、v3/v3b/v3c/v3d 都被 v3e 取代
 > 都不要继续分发。
 
 ### v2 审计修复：Unicode 空白 frontmatter + 启动即收尾（2026-10-30）
