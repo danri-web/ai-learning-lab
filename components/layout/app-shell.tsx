@@ -27,7 +27,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <p className="text-[11px] leading-relaxed text-muted-foreground">
               阶段 8 · 测试与本地发布
               <br />
-              Ctrl+K 搜全库；数据与备份都在这台电脑上
+              Ctrl+K 搜全库；数据都在本机
             </p>
           </div>
         </aside>
